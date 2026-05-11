@@ -24,7 +24,12 @@ export const findWorkspaceRoot = (start = process.cwd()) => {
 export const workspacePaths = (root = findWorkspaceRoot()) => ({
   root,
   pluginConfig: path.join(root, 'plugins.config.json'),
+  pluginSourceRoot: path.join(root, 'plugins'),
+  backendRoot: path.join(root, 'backend'),
+  backendPluginRuntimeRoot: path.join(root, 'backend/plugins'),
   backendPluginConfig: path.join(root, 'backend/config/autoload/plugins.php'),
+  webRoot: path.join(root, 'web'),
+  webPluginRuntimeRoot: path.join(root, 'web/src/plugins'),
   webPluginConfig: path.join(root, 'web/config/plugin.ts'),
 });
 

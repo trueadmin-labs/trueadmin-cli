@@ -10,6 +10,8 @@ export const runDoctorCommand = (paths = workspacePaths()) => {
     checkPluginConfig(paths),
     checkGeneratedPluginFiles(paths),
     checkInstalledPluginRuntime(paths),
+    checkRuntimeConfigBoundaries(paths),
+    checkRuntimeSourceBoundaries(paths),
   ];
 
   const failed = checks.filter((check) => check.status === 'fail');
@@ -90,4 +92,94 @@ const checkInstalledPluginRuntime = (paths) => {
   }
 
   return pass('installed plugin runtime', `${Object.keys(installed).length} plugin(s) installed.`);
+};
+
+const checkRuntimeConfigBoundaries = (paths) => {
+  const violations = [];
+
+  if (fs.existsSync(paths.backendPluginConfig)) {
+    const content = fs.readFileSync(paths.backendPluginConfig, 'utf8');
+    for (const pattern of ['plugins.config.json', 'web/config', 'web/src/plugins', 'marketplaces']) {
+      if (content.includes(pattern)) {
+        violations.push(`${relativePath(paths.root, paths.backendPluginConfig)} references ${pattern}`);
+      }
+    }
+  }
+
+  if (fs.existsSync(paths.webPluginConfig)) {
+    const content = fs.readFileSync(paths.webPluginConfig, 'utf8');
+    for (const pattern of ['plugins.config.json', 'backend/config', 'backend/plugins', 'marketplaces']) {
+      if (content.includes(pattern)) {
+        violations.push(`${relativePath(paths.root, paths.webPluginConfig)} references ${pattern}`);
+      }
+    }
+  }
+
+  if (violations.length > 0) {
+    return fail('runtime config boundaries', violations.join('; '));
+  }
+
+  return pass('runtime config boundaries', 'generated endpoint configs only contain endpoint-local facts.');
+};
+
+const checkRuntimeSourceBoundaries = (paths) => {
+  const violations = [
+    ...scanFiles(paths.backendRoot, ['plugins.config.json', 'web/config', 'web/src/plugins', '../web', '../../plugins/']),
+    ...scanFiles(paths.webRoot, ['plugins.config.json', 'backend/config', 'backend/plugins', '../backend', '../../plugins/']),
+  ];
+
+  if (violations.length > 0) {
+    return fail('runtime source boundaries', violations.slice(0, 8).join('; '));
+  }
+
+  return pass('runtime source boundaries', 'backend and web runtime code do not read cross-end framework config.');
+};
+
+const scanFiles = (root, forbiddenPatterns) => {
+  if (!fs.existsSync(root)) {
+    return [];
+  }
+
+  const violations = [];
+  const stack = [root];
+  const ignoredDirectories = new Set(['.git', 'node_modules', 'vendor', 'runtime', 'dist', 'build', '.vite', '.turbo']);
+  const allowedExtensions = new Set([
+    '.php',
+    '.json',
+    '.mjs',
+    '.js',
+    '.cjs',
+    '.ts',
+    '.tsx',
+    '.md',
+    '.yml',
+    '.yaml',
+  ]);
+
+  while (stack.length > 0) {
+    const current = stack.pop();
+    for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
+      const file = path.join(current, entry.name);
+      if (entry.isDirectory()) {
+        if (!ignoredDirectories.has(entry.name)) {
+          stack.push(file);
+        }
+        continue;
+      }
+
+      if (!entry.isFile() || !allowedExtensions.has(path.extname(entry.name))) {
+        continue;
+      }
+
+      const content = fs.readFileSync(file, 'utf8');
+      for (const pattern of forbiddenPatterns) {
+        if (content.includes(pattern)) {
+          violations.push(`${relativePath(path.dirname(root), file)} references ${pattern}`);
+          break;
+        }
+      }
+    }
+  }
+
+  return violations;
 };

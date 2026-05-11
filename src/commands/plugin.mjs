@@ -45,6 +45,7 @@ export const listPlugins = (paths = workspacePaths()) => {
 export const validatePlugins = (paths = workspacePaths()) => {
   const config = readPluginConfig(paths);
   const installed = objectValue(config.installed);
+  const disabled = stringList(config.disabled);
 
   for (const [id, definition] of Object.entries(installed)) {
     const item = objectValue(definition);
@@ -52,14 +53,29 @@ export const validatePlugins = (paths = workspacePaths()) => {
     if (!packageSource) {
       throw new Error(`Plugin [${id}] is missing source.`);
     }
+    assertRelativePathInside(packageSource, 'plugins', `Plugin [${id}] source`);
 
     const pluginJson = readPluginJson(path.join(paths.root, packageSource), paths);
     if (pluginJson.id !== id) {
       throw new Error(`Installed plugin [${id}] source plugin.json declares [${pluginJson.id}].`);
     }
+    const expectedSource = `plugins/${pluginJson.vendor}/${pluginJson.name}`;
+    if (normalizeRelative(packageSource) !== expectedSource) {
+      throw new Error(`Installed plugin [${id}] source must be [${expectedSource}].`);
+    }
 
-    for (const runtimePath of [item.backendPath, item.webPath].filter(Boolean)) {
-      if (!fs.existsSync(path.join(paths.root, runtimePath))) {
+    const backendPath = stringValue(item.backendPath, '');
+    const webPath = stringValue(item.webPath, '');
+    if (backendPath) {
+      assertRelativePathInside(backendPath, 'backend/plugins', `Plugin [${id}] backendPath`);
+    }
+    if (webPath) {
+      assertRelativePathInside(webPath, 'web/src/plugins', `Plugin [${id}] webPath`);
+    }
+
+    const isEnabled = Boolean(item.enabled ?? true) && !disabled.includes(id);
+    for (const runtimePath of [backendPath, webPath].filter(Boolean)) {
+      if (isEnabled && !fs.existsSync(path.join(paths.root, runtimePath))) {
         throw new Error(`Installed plugin [${id}] runtime is missing [${runtimePath}].`);
       }
     }
@@ -173,7 +189,6 @@ const renderBackendPluginConfig = (config) => {
     installed: backendInstalled,
     disabled: stringList(config.disabled),
     config: objectValue(config.config),
-    marketplaces: Array.isArray(config.marketplaces) ? config.marketplaces : [],
   };
 
   return `<?php\n\n` +
@@ -240,6 +255,21 @@ const mirrorRuntime = (source, target, force, paths) => {
   fs.mkdirSync(path.dirname(target), { recursive: true });
   fs.cpSync(source, target, { recursive: true });
   return true;
+};
+
+const normalizeRelative = (value) => value.replace(/\\/g, '/').replace(/^\/+/, '').replace(/\/+$/, '');
+
+const assertRelativePathInside = (value, prefix, label) => {
+  const normalized = normalizeRelative(value);
+  const normalizedPrefix = normalizeRelative(prefix);
+  if (
+    normalized === '' ||
+    path.isAbsolute(value) ||
+    normalized.includes('..') ||
+    (normalized !== normalizedPrefix && !normalized.startsWith(`${normalizedPrefix}/`))
+  ) {
+    throw new Error(`${label} must be a relative path inside [${normalizedPrefix}/].`);
+  }
 };
 
 const assertPluginDependencies = (pluginJson, installed) => {
