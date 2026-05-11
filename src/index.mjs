@@ -18,6 +18,10 @@ const main = () => {
   const [command, ...args] = process.argv.slice(2);
 
   try {
+    if (!command || command === '--help' || command === '-h') {
+      console.log(usage);
+      return;
+    }
     if (command === 'plugin') {
       runPluginCommand(args);
       return;
@@ -32,7 +36,7 @@ const main = () => {
     }
 
     console.log(usage);
-    process.exitCode = command ? 1 : 0;
+    process.exitCode = 1;
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));
     process.exitCode = 1;

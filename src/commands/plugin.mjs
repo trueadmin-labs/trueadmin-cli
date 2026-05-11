@@ -145,30 +145,38 @@ export const syncPluginConfig = (paths = workspacePaths()) => {
   fs.writeFileSync(paths.webPluginConfig, generated.web);
 };
 
-export const runPluginCommand = (args, paths = workspacePaths()) => {
+export const runPluginCommand = (args, paths) => {
   const [subcommand, ...rest] = args;
 
+  if (!subcommand || subcommand === '--help' || subcommand === '-h') {
+    console.log(pluginUsage);
+    return;
+  }
+  if (!['list', 'validate', 'install', 'sync'].includes(subcommand)) {
+    console.log(pluginUsage);
+    process.exitCode = 1;
+    return;
+  }
+
+  const resolvedPaths = paths ?? workspacePaths();
+
   if (subcommand === 'list') {
-    listPlugins(paths);
+    listPlugins(resolvedPaths);
     return;
   }
   if (subcommand === 'validate') {
-    validatePlugins(paths);
+    validatePlugins(resolvedPaths);
     console.log('Plugin config is valid.');
     return;
   }
   if (subcommand === 'install') {
-    installPlugin(rest, paths);
+    installPlugin(rest, resolvedPaths);
     return;
   }
   if (subcommand === 'sync') {
-    syncPluginConfig(paths);
+    syncPluginConfig(resolvedPaths);
     console.log('Plugin config synced.');
-    return;
   }
-
-  console.log(pluginUsage);
-  process.exitCode = subcommand ? 1 : 0;
 };
 
 const renderBackendPluginConfig = (config) => {
