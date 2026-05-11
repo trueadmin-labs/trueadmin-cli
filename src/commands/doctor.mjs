@@ -12,6 +12,7 @@ export const runDoctorCommand = (paths = workspacePaths()) => {
     checkInstalledPluginRuntime(paths),
     checkRuntimeConfigBoundaries(paths),
     checkRuntimeSourceBoundaries(paths),
+    checkTemplatePackageBoundaries(paths),
   ];
 
   const failed = checks.filter((check) => check.status === 'fail');
@@ -134,6 +135,88 @@ const checkRuntimeSourceBoundaries = (paths) => {
 
   return pass('runtime source boundaries', 'backend and web runtime code do not read cross-end framework config.');
 };
+
+const checkTemplatePackageBoundaries = (paths) => {
+  const violations = [
+    ...checkPackageFile(path.join(paths.root, 'package.json'), paths),
+    ...checkPackageFile(path.join(paths.webRoot, 'package.json'), paths),
+    ...checkComposerFile(path.join(paths.backendRoot, 'composer.json'), paths),
+    ...checkBackendAnnotationFile(path.join(paths.backendRoot, 'config/autoload/annotations.php'), paths),
+  ];
+
+  if (violations.length > 0) {
+    return fail('template package boundaries', violations.join('; '));
+  }
+
+  return pass('template package boundaries', 'template uses published framework packages instead of local path references.');
+};
+
+const checkPackageFile = (file, paths) => {
+  if (!fs.existsSync(file)) {
+    return [];
+  }
+
+  const violations = [];
+  const packageJson = readJsonFile(file);
+  const relative = relativePath(paths.root, file);
+  const scripts = objectValue(packageJson.scripts);
+
+  for (const [name, command] of Object.entries(scripts)) {
+    if (typeof command === 'string' && command.includes('../trueadmin-cli')) {
+      violations.push(`${relative} script [${name}] references ../trueadmin-cli`);
+    }
+  }
+
+  for (const section of ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies']) {
+    const dependencies = objectValue(packageJson[section]);
+    for (const [name, specifier] of Object.entries(dependencies)) {
+      if (!isTrueAdminPackage(name) || typeof specifier !== 'string') {
+        continue;
+      }
+      if (specifier.startsWith('file:') || specifier.startsWith('link:') || specifier.startsWith('workspace:')) {
+        violations.push(`${relative} ${section}.${name} uses local specifier [${specifier}]`);
+      }
+    }
+  }
+
+  return violations;
+};
+
+const checkComposerFile = (file, paths) => {
+  if (!fs.existsSync(file)) {
+    return [];
+  }
+
+  const composer = readJsonFile(file);
+  const repositories = Array.isArray(composer.repositories) ? composer.repositories : [];
+  const violations = [];
+
+  for (const repository of repositories) {
+    const item = objectValue(repository);
+    if (item.type === 'path' && typeof item.url === 'string' && item.url.includes('trueadmin')) {
+      violations.push(`${relativePath(paths.root, file)} repositories contains local TrueAdmin path [${item.url}]`);
+    }
+  }
+
+  return violations;
+};
+
+const checkBackendAnnotationFile = (file, paths) => {
+  if (!fs.existsSync(file)) {
+    return [];
+  }
+
+  const content = fs.readFileSync(file, 'utf8');
+  if (content.includes('../../trueadmin-kernel')) {
+    return [`${relativePath(paths.root, file)} references ../../trueadmin-kernel`];
+  }
+
+  return [];
+};
+
+const readJsonFile = (file) => JSON.parse(fs.readFileSync(file, 'utf8'));
+
+const isTrueAdminPackage = (name) => name === 'trueadmin' || name.startsWith('@trueadmin/');
 
 const scanFiles = (root, forbiddenPatterns) => {
   if (!fs.existsSync(root)) {
