@@ -5,11 +5,11 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/trueadmin-labs/trueadmin-cli.git"
+    "url": "git+https://github.com/trueadmin-labs/trueadmin-cli.git"
   },
   "type": "module",
   "bin": {
-    "trueadmin": "./src/index.mjs"
+    "trueadmin": "src/index.mjs"
   },
   "files": [
     "src"
