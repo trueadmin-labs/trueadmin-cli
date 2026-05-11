@@ -7,6 +7,8 @@ The CLI manages cross-end framework tasks such as plugin installation, plugin co
 ## Usage
 
 ```bash
+npx trueadmin --version
+npx trueadmin --help
 npx trueadmin init my-admin
 cd my-admin
 npm install
@@ -18,4 +20,4 @@ npm run doctor
 - `plugins.config.json` is framework-level input and is only read by the TrueAdmin CLI.
 - Backend runtime reads `backend/config/autoload/plugins.php` and `backend/plugins/**`.
 - Web runtime reads `web/config/plugin.ts` and `web/src/plugins/**`.
-- `trueadmin doctor` checks generated files, installed runtimes, and cross-end config boundary violations.
+- `trueadmin doctor` checks generated files, installed runtimes, cross-end config boundary violations, backend menu resource boundaries, and Web env access boundaries.
