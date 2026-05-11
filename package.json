@@ -1,7 +1,6 @@
 {
   "name": "@trueadmin/cli",
   "version": "0.1.0",
-  "private": true,
   "description": "Framework-level CLI for TrueAdmin.",
   "license": "MIT",
   "repository": {
@@ -11,5 +10,11 @@
   "type": "module",
   "bin": {
     "trueadmin": "./src/index.mjs"
+  },
+  "files": [
+    "src"
+  ],
+  "publishConfig": {
+    "access": "public"
   }
 }
