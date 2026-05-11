@@ -12,6 +12,7 @@ export const runDoctorCommand = (paths = workspacePaths()) => {
     checkInstalledPluginRuntime(paths),
     checkRuntimeConfigBoundaries(paths),
     checkRuntimeSourceBoundaries(paths),
+    checkBackendMenuResourceBoundary(paths),
     checkWebEnvConfigBoundary(paths),
     checkTemplatePackageBoundaries(paths),
   ];
@@ -135,6 +136,16 @@ const checkRuntimeSourceBoundaries = (paths) => {
   }
 
   return pass('runtime source boundaries', 'backend and web runtime code do not read cross-end framework config.');
+};
+
+const checkBackendMenuResourceBoundary = (paths) => {
+  const violations = scanFiles(paths.backendRoot, ['#[Menu']);
+
+  if (violations.length > 0) {
+    return fail('backend menu resource boundary', violations.slice(0, 8).join('; '));
+  }
+
+  return pass('backend menu resource boundary', 'backend menus are declared by resources/menus.php.');
 };
 
 const checkWebEnvConfigBoundary = (paths) => {

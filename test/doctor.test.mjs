@@ -96,6 +96,7 @@ test('doctor passes a healthy workspace', () => {
   assert.match(result.output, /PASS workspace layout/);
   assert.match(result.output, /PASS generated plugin files/);
   assert.match(result.output, /PASS runtime source boundaries/);
+  assert.match(result.output, /PASS backend menu resource boundary/);
   assert.match(result.output, /PASS web env config boundary/);
 });
 
@@ -130,4 +131,15 @@ test('doctor fails when web runtime reads env directly', () => {
   assert.equal(result.exitCode, 1);
   assert.match(result.output, /FAIL web env config boundary/);
   assert.match(result.output, /import\.meta\.env/);
+});
+
+test('doctor fails when backend controller declares menu attributes', () => {
+  const paths = makeWorkspace();
+  fs.writeFileSync(path.join(paths.backendRoot, 'app/MenuController.php'), '<?php #[Menu(code: "bad")] final class MenuController {}' + '\n');
+
+  const result = captureDoctor(paths);
+
+  assert.equal(result.exitCode, 1);
+  assert.match(result.output, /FAIL backend menu resource boundary/);
+  assert.match(result.output, /#\[Menu/);
 });
