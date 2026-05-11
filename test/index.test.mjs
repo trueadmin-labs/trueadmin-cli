@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
+import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 
 const cliPath = fileURLToPath(new URL('../src/index.mjs', import.meta.url));
+const packageJson = JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
 
 const runCli = (...args) =>
   spawnSync(process.execPath, [cliPath, ...args], {
@@ -24,6 +26,14 @@ test('prints plugin help without requiring a workspace', () => {
 
   assert.equal(result.status, 0);
   assert.match(result.stdout, /trueadmin plugin list/);
+  assert.equal(result.stderr, '');
+});
+
+test('prints the package version', () => {
+  const result = runCli('--version');
+
+  assert.equal(result.status, 0);
+  assert.equal(result.stdout, `${packageJson.version}\n`);
   assert.equal(result.stderr, '');
 });
 

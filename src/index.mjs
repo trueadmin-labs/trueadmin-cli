@@ -1,9 +1,12 @@
 #!/usr/bin/env node
 
+import fs from 'node:fs';
 import process from 'node:process';
 import { runDoctorCommand } from './commands/doctor.mjs';
 import { initUsage, runInitCommand } from './commands/init.mjs';
 import { pluginUsage, runPluginCommand } from './commands/plugin.mjs';
+
+const packageJson = JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
 
 const usage = `Usage:
   trueadmin init <directory>
@@ -20,6 +23,10 @@ const main = () => {
   try {
     if (!command || command === '--help' || command === '-h') {
       console.log(usage);
+      return;
+    }
+    if (command === '--version' || command === '-v') {
+      console.log(packageJson.version);
       return;
     }
     if (command === 'plugin') {
