@@ -16,8 +16,7 @@
     "trueadmin": "src/index.mjs"
   },
   "files": [
-    "src",
-    "test"
+    "src"
   ],
   "publishConfig": {
     "access": "public"
