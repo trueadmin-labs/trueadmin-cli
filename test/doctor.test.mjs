@@ -96,6 +96,7 @@ test('doctor passes a healthy workspace', () => {
   assert.match(result.output, /PASS workspace layout/);
   assert.match(result.output, /PASS generated plugin files/);
   assert.match(result.output, /PASS runtime source boundaries/);
+  assert.match(result.output, /PASS web env config boundary/);
 });
 
 test('doctor fails when generated plugin files are stale', () => {
@@ -118,4 +119,15 @@ test('doctor fails on cross-end runtime source references', () => {
   assert.equal(result.exitCode, 1);
   assert.match(result.output, /FAIL runtime source boundaries/);
   assert.match(result.output, /web\/config/);
+});
+
+test('doctor fails when web runtime reads env directly', () => {
+  const paths = makeWorkspace();
+  fs.writeFileSync(path.join(paths.webRoot, 'src/BadEnv.ts'), 'export const value = import.meta.env.DEV;\n');
+
+  const result = captureDoctor(paths);
+
+  assert.equal(result.exitCode, 1);
+  assert.match(result.output, /FAIL web env config boundary/);
+  assert.match(result.output, /import\.meta\.env/);
 });

@@ -12,6 +12,7 @@ export const runDoctorCommand = (paths = workspacePaths()) => {
     checkInstalledPluginRuntime(paths),
     checkRuntimeConfigBoundaries(paths),
     checkRuntimeSourceBoundaries(paths),
+    checkWebEnvConfigBoundary(paths),
     checkTemplatePackageBoundaries(paths),
   ];
 
@@ -134,6 +135,17 @@ const checkRuntimeSourceBoundaries = (paths) => {
   }
 
   return pass('runtime source boundaries', 'backend and web runtime code do not read cross-end framework config.');
+};
+
+const checkWebEnvConfigBoundary = (paths) => {
+  const sourceRoot = path.join(paths.webRoot, 'src');
+  const violations = scanFiles(sourceRoot, ['import.meta.env', 'process.env']);
+
+  if (violations.length > 0) {
+    return fail('web env config boundary', violations.slice(0, 8).join('; '));
+  }
+
+  return pass('web env config boundary', 'web runtime reads env only through web/config.');
 };
 
 const checkTemplatePackageBoundaries = (paths) => {
