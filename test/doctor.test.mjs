@@ -95,8 +95,11 @@ test('doctor passes a healthy workspace', () => {
   assert.doesNotMatch(result.output, /FAIL/);
   assert.match(result.output, /PASS workspace layout/);
   assert.match(result.output, /PASS generated plugin files/);
+  assert.match(result.output, /PASS installed plugin runtime drift/);
   assert.match(result.output, /PASS runtime source boundaries/);
   assert.match(result.output, /PASS backend menu resource boundary/);
+  assert.match(result.output, /PASS backend public permission boundary/);
+  assert.match(result.output, /PASS web manifest menu boundary/);
   assert.match(result.output, /PASS web env config boundary/);
 });
 
@@ -142,4 +145,76 @@ test('doctor fails when backend controller declares menu attributes', () => {
   assert.equal(result.exitCode, 1);
   assert.match(result.output, /FAIL backend menu resource boundary/);
   assert.match(result.output, /#\[Menu/);
+});
+
+test('doctor fails when backend admin code uses public permissions', () => {
+  const paths = makeWorkspace();
+  fs.writeFileSync(
+    path.join(paths.backendRoot, 'app/PublicPermissionController.php'),
+    '<?php #[Permission(public: true)] final class PublicPermissionController {}' + '\n',
+  );
+
+  const result = captureDoctor(paths);
+
+  assert.equal(result.exitCode, 1);
+  assert.match(result.output, /FAIL backend public permission boundary/);
+  assert.match(result.output, /Permission\(public: true\)/);
+});
+
+test('doctor fails when plugin runtime drifts from source package', () => {
+  const paths = makeWorkspace();
+  fs.mkdirSync(path.join(paths.root, 'plugins/acme/demo/web'), { recursive: true });
+  fs.writeFileSync(path.join(paths.root, 'plugins/acme/demo/web/manifest.ts'), 'export default { id: "acme.demo" };\n');
+  fs.writeFileSync(path.join(paths.webPluginRuntimeRoot, 'acme/demo/manifest.ts'), 'export default { id: "acme.changed" };\n');
+
+  const result = captureDoctor(paths);
+
+  assert.equal(result.exitCode, 1);
+  assert.match(result.output, /FAIL installed plugin runtime drift/);
+  assert.match(result.output, /acme\.demo:web:changed manifest\.ts/);
+});
+
+test('doctor fails when web manifest declares menus', () => {
+  const paths = makeWorkspace();
+  fs.writeFileSync(
+    path.join(paths.webPluginRuntimeRoot, 'acme/demo/manifest.ts'),
+    'export default { id: "acme.demo", menus: [] };\n',
+  );
+
+  const result = captureDoctor(paths);
+
+  assert.equal(result.exitCode, 1);
+  assert.match(result.output, /FAIL web manifest menu boundary/);
+  assert.match(result.output, /manifest\.menus/);
+});
+
+test('doctor fails on latest npm dependencies and TrueAdmin composer repositories', () => {
+  const paths = makeWorkspace();
+  fs.writeFileSync(
+    path.join(paths.webRoot, 'package.json'),
+    JSON.stringify({ dependencies: { antd: 'latest' } }, null, 2),
+  );
+  fs.mkdirSync(path.join(paths.backendRoot), { recursive: true });
+  fs.writeFileSync(
+    path.join(paths.backendRoot, 'composer.json'),
+    JSON.stringify(
+      {
+        repositories: {
+          'trueadmin-kernel': {
+            type: 'vcs',
+            url: 'git@github.com:trueadmin-labs/trueadmin-kernel.git',
+          },
+        },
+      },
+      null,
+      2,
+    ),
+  );
+
+  const result = captureDoctor(paths);
+
+  assert.equal(result.exitCode, 1);
+  assert.match(result.output, /FAIL template package boundaries/);
+  assert.match(result.output, /dependencies\.antd uses latest/);
+  assert.match(result.output, /repositories contains TrueAdmin VCS/);
 });

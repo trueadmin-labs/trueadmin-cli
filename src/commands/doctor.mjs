@@ -10,9 +10,12 @@ export const runDoctorCommand = (paths = workspacePaths()) => {
     checkPluginConfig(paths),
     checkGeneratedPluginFiles(paths),
     checkInstalledPluginRuntime(paths),
+    checkInstalledPluginRuntimeDrift(paths),
     checkRuntimeConfigBoundaries(paths),
     checkRuntimeSourceBoundaries(paths),
     checkBackendMenuResourceBoundary(paths),
+    checkBackendPublicPermissionBoundary(paths),
+    checkWebManifestMenuBoundary(paths),
     checkWebEnvConfigBoundary(paths),
     checkTemplatePackageBoundaries(paths),
   ];
@@ -97,6 +100,44 @@ const checkInstalledPluginRuntime = (paths) => {
   return pass('installed plugin runtime', `${Object.keys(installed).length} plugin(s) installed.`);
 };
 
+const checkInstalledPluginRuntimeDrift = (paths) => {
+  const config = readPluginConfig(paths);
+  const installed = objectValue(config.installed);
+  const drift = [];
+
+  for (const [id, definition] of Object.entries(installed)) {
+    const item = objectValue(definition);
+    const source = stringValue(item.source, '');
+    if (!source) {
+      continue;
+    }
+
+    const sourceRoot = path.join(paths.root, source);
+    const backendSource = path.join(sourceRoot, 'backend/php');
+    const webSource = path.join(sourceRoot, 'web');
+    const backendRuntime = path.join(paths.root, stringValue(item.backendPath, ''));
+    const webRuntime = path.join(paths.root, stringValue(item.webPath, ''));
+
+    if (fs.existsSync(backendSource) || fs.existsSync(backendRuntime)) {
+      drift.push(
+        ...compareDirectoryTrees(backendSource, backendRuntime).map(
+          (entry) => `${id}:backend:${entry}`,
+        ),
+      );
+    }
+
+    if (fs.existsSync(webSource) || fs.existsSync(webRuntime)) {
+      drift.push(...compareDirectoryTrees(webSource, webRuntime).map((entry) => `${id}:web:${entry}`));
+    }
+  }
+
+  if (drift.length > 0) {
+    return fail('installed plugin runtime drift', drift.slice(0, 8).join('; '));
+  }
+
+  return pass('installed plugin runtime drift', 'installed plugin runtimes match source packages.');
+};
+
 const checkRuntimeConfigBoundaries = (paths) => {
   const violations = [];
 
@@ -148,6 +189,32 @@ const checkBackendMenuResourceBoundary = (paths) => {
   return pass('backend menu resource boundary', 'backend menus are declared by resources/menus.php.');
 };
 
+const checkBackendPublicPermissionBoundary = (paths) => {
+  const violations = [
+    ...scanFilesByRegex(paths.backendRoot, /#\[\s*Permission\s*\([^)]*public\s*:\s*true/s, 'declares #[Permission(public: true)]'),
+    ...scanFilesByRegex(paths.pluginSourceRoot, /#\[\s*Permission\s*\([^)]*public\s*:\s*true/s, 'declares #[Permission(public: true)]'),
+  ];
+
+  if (violations.length > 0) {
+    return fail('backend public permission boundary', violations.slice(0, 8).join('; '));
+  }
+
+  return pass('backend public permission boundary', 'login-only admin APIs omit #[Permission] instead of using public permissions.');
+};
+
+const checkWebManifestMenuBoundary = (paths) => {
+  const violations = [
+    ...scanManifestFiles(path.join(paths.webRoot, 'src')),
+    ...scanManifestFiles(paths.pluginSourceRoot),
+  ];
+
+  if (violations.length > 0) {
+    return fail('web manifest menu boundary', violations.slice(0, 8).join('; '));
+  }
+
+  return pass('web manifest menu boundary', 'web manifests only declare runtime routes and module metadata.');
+};
+
 const checkWebEnvConfigBoundary = (paths) => {
   const sourceRoot = path.join(paths.webRoot, 'src');
   const violations = scanFiles(sourceRoot, ['import.meta.env', 'process.env']);
@@ -193,10 +260,16 @@ const checkPackageFile = (file, paths) => {
   for (const section of ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies']) {
     const dependencies = objectValue(packageJson[section]);
     for (const [name, specifier] of Object.entries(dependencies)) {
-      if (!isTrueAdminPackage(name) || typeof specifier !== 'string') {
+      if (typeof specifier !== 'string') {
         continue;
       }
-      if (specifier.startsWith('file:') || specifier.startsWith('link:') || specifier.startsWith('workspace:')) {
+      if (specifier === 'latest') {
+        violations.push(`${relative} ${section}.${name} uses latest`);
+      }
+      if (
+        isTrueAdminPackage(name) &&
+        (specifier.startsWith('file:') || specifier.startsWith('link:') || specifier.startsWith('workspace:'))
+      ) {
         violations.push(`${relative} ${section}.${name} uses local specifier [${specifier}]`);
       }
     }
@@ -211,13 +284,22 @@ const checkComposerFile = (file, paths) => {
   }
 
   const composer = readJsonFile(file);
-  const repositories = Array.isArray(composer.repositories) ? composer.repositories : [];
+  const repositories = Array.isArray(composer.repositories)
+    ? composer.repositories
+    : Object.values(objectValue(composer.repositories));
   const violations = [];
 
   for (const repository of repositories) {
     const item = objectValue(repository);
-    if (item.type === 'path' && typeof item.url === 'string' && item.url.includes('trueadmin')) {
+    if (typeof item.url !== 'string') {
+      continue;
+    }
+
+    if (item.type === 'path' && item.url.includes('trueadmin')) {
       violations.push(`${relativePath(paths.root, file)} repositories contains local TrueAdmin path [${item.url}]`);
+    }
+    if (item.type === 'vcs' && item.url.includes('trueadmin')) {
+      violations.push(`${relativePath(paths.root, file)} repositories contains TrueAdmin VCS [${item.url}]`);
     }
   }
 
@@ -240,6 +322,126 @@ const checkBackendAnnotationFile = (file, paths) => {
 const readJsonFile = (file) => JSON.parse(fs.readFileSync(file, 'utf8'));
 
 const isTrueAdminPackage = (name) => name === 'trueadmin' || name.startsWith('@trueadmin/');
+
+const scanFilesByRegex = (root, pattern, message) => {
+  if (!fs.existsSync(root)) {
+    return [];
+  }
+
+  const violations = [];
+  const stack = [root];
+  const ignoredDirectories = new Set(['.git', 'node_modules', 'vendor', 'runtime', 'dist', 'build', '.vite', '.turbo']);
+  const allowedExtensions = new Set(['.php']);
+
+  while (stack.length > 0) {
+    const current = stack.pop();
+    for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
+      const file = path.join(current, entry.name);
+      if (entry.isDirectory()) {
+        if (!ignoredDirectories.has(entry.name)) {
+          stack.push(file);
+        }
+        continue;
+      }
+
+      if (!entry.isFile() || !allowedExtensions.has(path.extname(entry.name))) {
+        continue;
+      }
+
+      if (pattern.test(fs.readFileSync(file, 'utf8'))) {
+        violations.push(`${relativePath(path.dirname(root), file)} ${message}`);
+      }
+    }
+  }
+
+  return violations;
+};
+
+const scanManifestFiles = (root) => {
+  if (!fs.existsSync(root)) {
+    return [];
+  }
+
+  const violations = [];
+  const stack = [root];
+  const ignoredDirectories = new Set(['.git', 'node_modules', 'vendor', 'runtime', 'dist', 'build', '.vite', '.turbo']);
+
+  while (stack.length > 0) {
+    const current = stack.pop();
+    for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
+      const file = path.join(current, entry.name);
+      if (entry.isDirectory()) {
+        if (!ignoredDirectories.has(entry.name)) {
+          stack.push(file);
+        }
+        continue;
+      }
+
+      if (!entry.isFile() || !/^manifest\.(ts|tsx|js|mjs|cjs)$/.test(entry.name)) {
+        continue;
+      }
+
+      const content = fs.readFileSync(file, 'utf8');
+      if (/\bmenus\s*:/.test(content)) {
+        violations.push(`${relativePath(path.dirname(root), file)} declares manifest.menus`);
+      }
+    }
+  }
+
+  return violations;
+};
+
+const compareDirectoryTrees = (source, target) => {
+  const differences = [];
+  const ignoredDirectories = new Set(['.git', 'node_modules', 'vendor', 'runtime', 'dist', 'build', '.vite', '.turbo']);
+  const sourceFiles = collectRelativeFiles(source, ignoredDirectories);
+  const targetFiles = collectRelativeFiles(target, ignoredDirectories);
+  const allFiles = new Set([...sourceFiles.keys(), ...targetFiles.keys()]);
+
+  for (const file of [...allFiles].sort()) {
+    const sourceFile = sourceFiles.get(file);
+    const targetFile = targetFiles.get(file);
+    if (!sourceFile) {
+      differences.push(`source missing ${file}`);
+      continue;
+    }
+    if (!targetFile) {
+      differences.push(`runtime missing ${file}`);
+      continue;
+    }
+    if (fs.readFileSync(sourceFile, 'utf8') !== fs.readFileSync(targetFile, 'utf8')) {
+      differences.push(`changed ${file}`);
+    }
+  }
+
+  return differences;
+};
+
+const collectRelativeFiles = (root, ignoredDirectories) => {
+  const files = new Map();
+  if (!fs.existsSync(root)) {
+    return files;
+  }
+
+  const stack = [root];
+  while (stack.length > 0) {
+    const current = stack.pop();
+    for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
+      const file = path.join(current, entry.name);
+      if (entry.isDirectory()) {
+        if (!ignoredDirectories.has(entry.name)) {
+          stack.push(file);
+        }
+        continue;
+      }
+      if (entry.isFile()) {
+        files.set(path.relative(root, file), file);
+      }
+    }
+  }
+
+  return files;
+};
 
 const scanFiles = (root, forbiddenPatterns) => {
   if (!fs.existsSync(root)) {
