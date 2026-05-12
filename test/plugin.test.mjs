@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import {
+  createPluginDependencyPlan,
   generatedPluginConfig,
   installPlugin,
   readPluginConfig,
@@ -107,8 +108,15 @@ const makeInstallWorkspace = () => {
       2,
     ),
   );
-  fs.writeFileSync(path.join(root, 'plugins/acme/demo/backend/php/composer.json'), '{"name":"acme/demo"}\n');
+  fs.writeFileSync(
+    path.join(root, 'plugins/acme/demo/backend/php/composer.json'),
+    JSON.stringify({ name: 'acme/demo', require: { 'monolog/monolog': '^3.0' } }, null, 2),
+  );
   fs.writeFileSync(path.join(root, 'plugins/acme/demo/web/manifest.ts'), 'export default {};\n');
+  fs.writeFileSync(
+    path.join(root, 'plugins/acme/demo/web/package.json'),
+    JSON.stringify({ dependencies: { '@ant-design/charts': '^2.6.7' } }, null, 2),
+  );
   fs.writeFileSync(
     paths.pluginConfig,
     JSON.stringify(
@@ -180,6 +188,15 @@ test('writePluginConfig sorts installed plugin ids', () => {
   assert.deepEqual(Object.keys(readPluginConfig(paths).installed), ['acme.demo', 'zeta.demo']);
 });
 
+test('collects plugin runtime dependency install plan', () => {
+  const paths = makeInstallWorkspace();
+  const plan = createPluginDependencyPlan(path.join(paths.root, 'plugins/acme/demo'), paths);
+
+  assert.deepEqual(plan.web, { '@ant-design/charts': '^2.6.7' });
+  assert.deepEqual(plan.backend, { 'monolog/monolog': '^3.0' });
+  assert.deepEqual(plan.backendPackages, { 'monolog/monolog': '^3.0' });
+});
+
 test('install copies runtime files and syncs endpoint configs', () => {
   const paths = makeInstallWorkspace();
 
@@ -187,6 +204,7 @@ test('install copies runtime files and syncs endpoint configs', () => {
 
   assert.equal(fs.existsSync(path.join(paths.root, 'backend/plugins/acme/demo/composer.json')), true);
   assert.equal(fs.existsSync(path.join(paths.root, 'web/src/plugins/acme/demo/manifest.ts')), true);
+  assert.equal(fs.existsSync(path.join(paths.root, 'web/src/plugins/acme/demo/package.json')), true);
 
   const config = readPluginConfig(paths);
   assert.equal(config.installed['acme.demo'].source, 'plugins/acme/demo');

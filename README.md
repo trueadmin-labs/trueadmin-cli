@@ -12,6 +12,12 @@ npx trueadmin --help
 npx trueadmin init my-admin
 cd my-admin
 npm install
+pnpm --dir web install
+composer --working-dir=backend install
+cp .env.example .env
+cp backend/.env.example backend/.env
+docker compose -f deploy/docker/docker-compose.yml up -d
+php backend/bin/hyperf.php migrate:fresh --seed
 npm run doctor
 ```
 

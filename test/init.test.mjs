@@ -45,14 +45,32 @@ const makeTemplateRepo = () => {
 
 const makeWorkspace = () => fs.mkdtempSync(path.join(os.tmpdir(), 'trueadmin-init-workspace-'));
 
+const captureConsole = (callback) => {
+  const originalLog = console.log;
+  const messages = [];
+  console.log = (...args) => {
+    messages.push(args.join(' '));
+  };
+  try {
+    callback();
+  } finally {
+    console.log = originalLog;
+  }
+  return messages.join('\n');
+};
+
 test('init clones a template and removes git metadata by default', () => {
   const template = pathToFileURL(makeTemplateRepo()).href;
   const cwd = makeWorkspace();
 
-  runInitCommand(['demo', '--template', template, '--branch', 'main'], cwd);
+  const output = captureConsole(() => runInitCommand(['demo', '--template', template, '--branch', 'main'], cwd));
 
   assert.equal(fs.existsSync(path.join(cwd, 'demo/package.json')), true);
   assert.equal(fs.existsSync(path.join(cwd, 'demo/.git')), false);
+  assert.match(output, /pnpm --dir web install/);
+  assert.match(output, /composer --working-dir=backend install/);
+  assert.match(output, /docker compose -f deploy\/docker\/docker-compose\.yml up -d/);
+  assert.match(output, /php backend\/bin\/hyperf\.php migrate:fresh --seed/);
 });
 
 test('init keeps git metadata when requested', () => {

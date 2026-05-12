@@ -101,6 +101,7 @@ export const installPlugin = (args, paths = workspacePaths()) => {
 
   const config = readPluginConfig(paths);
   assertPluginDependencies(pluginJson, objectValue(config.installed));
+  const dependencyPlan = createPluginDependencyPlan(sourcePath, paths);
 
   const backendPath = `backend/plugins/${vendor}/${name}`;
   const webPath = `web/src/plugins/${vendor}/${name}`;
@@ -126,6 +127,23 @@ export const installPlugin = (args, paths = workspacePaths()) => {
 
   console.log(`Plugin installed: ${id}:${pluginJson.version} [${enabled ? 'enabled' : 'disabled'}]`);
   console.log(`Runtime copied: backend=${backendCopied ? 'yes' : 'no'}, web=${webCopied ? 'yes' : 'no'}`);
+  printPluginDependencyPlan(dependencyPlan);
+};
+
+export const createPluginDependencyPlan = (sourcePath, paths = workspacePaths()) => {
+  const webPackage = readOptionalJson(path.join(sourcePath, 'web/package.json'), paths);
+  const composerPackage = readOptionalJson(path.join(sourcePath, 'backend/php/composer.json'), paths);
+  const webDependencies = dependencyMap(webPackage.dependencies);
+  const backendRequire = dependencyMap(composerPackage.require);
+  const backendPackages = Object.fromEntries(
+    Object.entries(backendRequire).filter(([name]) => isComposerInstallablePackage(name)),
+  );
+
+  return {
+    web: webDependencies,
+    backend: backendRequire,
+    backendPackages,
+  };
 };
 
 export const generatedPluginConfig = (paths = workspacePaths()) => {
@@ -248,6 +266,73 @@ const readPluginJson = (sourcePath, paths) => {
 
   return decoded;
 };
+
+const readOptionalJson = (file, paths) => {
+  if (!fs.existsSync(file)) {
+    return {};
+  }
+
+  try {
+    return JSON.parse(fs.readFileSync(file, 'utf8'));
+  } catch (error) {
+    throw new Error(`Invalid JSON file [${relativePath(paths.root, file)}]: ${error.message}`);
+  }
+};
+
+const isComposerInstallablePackage = (name) =>
+  name !== 'php' && !name.startsWith('ext-') && !name.startsWith('lib-');
+
+const dependencyMap = (value) =>
+  Object.fromEntries(
+    Object.entries(objectValue(value)).filter(([, version]) => typeof version === 'string' && version !== ''),
+  );
+
+const printPluginDependencyPlan = (plan) => {
+  const lines = renderPluginDependencyPlan(plan);
+  console.log('Dependency plan:');
+  for (const line of lines) {
+    console.log(line);
+  }
+};
+
+const renderPluginDependencyPlan = (plan) => {
+  const lines = [];
+  const webDependencies = Object.entries(objectValue(plan.web));
+  const backendRequire = Object.entries(objectValue(plan.backend));
+  const backendPackages = Object.entries(objectValue(plan.backendPackages));
+
+  if (webDependencies.length > 0) {
+    lines.push(' - Web dependencies from web/package.json:');
+    for (const [name, version] of webDependencies) {
+      lines.push(`   ${name}: ${version}`);
+    }
+    lines.push(`   Run: pnpm --dir web add ${webDependencies.map(formatNpmDependency).join(' ')}`);
+  }
+
+  if (backendRequire.length > 0) {
+    lines.push(' - Backend dependencies from backend/php/composer.json:');
+    for (const [name, version] of backendRequire) {
+      lines.push(`   ${name}: ${version}`);
+    }
+    if (backendPackages.length > 0) {
+      lines.push(
+        `   Run: composer --working-dir=backend require ${backendPackages.map(formatComposerDependency).join(' ')}`,
+      );
+    } else {
+      lines.push('   Run: composer --working-dir=backend check-platform-reqs');
+    }
+  }
+
+  if (lines.length === 0) {
+    lines.push(' - no additional web or backend dependencies.');
+  }
+
+  return lines;
+};
+
+const formatNpmDependency = ([name, version]) => `${name}@${version}`;
+
+const formatComposerDependency = ([name, version]) => `${name}:${version}`;
 
 const mirrorRuntime = (source, target, force, paths) => {
   if (!fs.existsSync(source)) {
