@@ -204,10 +204,10 @@ test('doctor fails when admin permission annotation has no permission middleware
 
   assert.equal(result.exitCode, 1);
   assert.match(result.output, /FAIL backend admin middleware boundary/);
-  assert.match(result.output, /declares #\[Permission\] without PermissionMiddleware/);
+  assert.match(result.output, /declares #\[Permission\] without class-level PermissionMiddleware/);
 });
 
-test('doctor accepts method permission middleware after class auth middleware', () => {
+test('doctor fails when permission middleware is only declared on the method', () => {
   const paths = makeWorkspace();
   fs.writeFileSync(
     path.join(paths.backendRoot, 'app/MethodPermissionMiddlewareController.php'),
@@ -217,8 +217,9 @@ test('doctor accepts method permission middleware after class auth middleware', 
 
   const result = captureDoctor(paths);
 
-  assert.equal(result.exitCode, undefined);
-  assert.doesNotMatch(result.output, /FAIL backend admin middleware boundary/);
+  assert.equal(result.exitCode, 1);
+  assert.match(result.output, /FAIL backend admin middleware boundary/);
+  assert.match(result.output, /without class-level PermissionMiddleware/);
 });
 
 test('doctor fails when plugin runtime drifts from source package', () => {

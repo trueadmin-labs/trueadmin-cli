@@ -213,7 +213,7 @@ const checkBackendAdminMiddlewareBoundary = (paths) => {
     return fail('backend admin middleware boundary', violations.slice(0, 8).join('; '));
   }
 
-  return pass('backend admin middleware boundary', 'permissioned admin routes include auth and permission middleware in order.');
+  return pass('backend admin middleware boundary', 'permissioned admin controllers declare auth and permission middleware in order.');
 };
 
 const checkWebManifestMenuBoundary = (paths) => {
@@ -373,6 +373,8 @@ const scanAdminRouteMiddlewareBoundaries = (root) => {
       const classMiddleware = classAttributes
         .filter((attribute) => isAttribute(attribute.source, ['AdminController', 'AdminRouteController']))
         .flatMap((attribute) => middlewareClasses(attribute.source));
+      const classAuthIndex = classMiddleware.indexOf('AdminAuthMiddleware');
+      const classPermissionIndex = classMiddleware.indexOf('PermissionMiddleware');
       const classHasPermission = classAttributes.some((attribute) => isAttribute(attribute.source, ['Permission']));
       const functionMatches = [...content.matchAll(/\bfunction\s+[A-Za-z_][A-Za-z0-9_]*\s*\(/g)];
       let previousFunctionEnd = classIndex === -1 ? 0 : classIndex;
@@ -390,6 +392,15 @@ const scanAdminRouteMiddlewareBoundaries = (root) => {
 
         const methodHasPermission = methodAttributes.some((attribute) => isAttribute(attribute.source, ['Permission']));
         const requiresPermission = classHasPermission || methodHasPermission;
+        if (requiresPermission && classPermissionIndex === -1) {
+          violations.push(`${relative} declares #[Permission] without class-level PermissionMiddleware`);
+        }
+        if (classPermissionIndex !== -1 && classAuthIndex === -1) {
+          violations.push(`${relative} uses class-level PermissionMiddleware without AdminAuthMiddleware`);
+        }
+        if (classPermissionIndex !== -1 && classAuthIndex !== -1 && classAuthIndex > classPermissionIndex) {
+          violations.push(`${relative} lists class-level PermissionMiddleware before AdminAuthMiddleware`);
+        }
 
         for (const routeAttribute of routeAttributes) {
           const routeMiddleware = uniqueClasses([
