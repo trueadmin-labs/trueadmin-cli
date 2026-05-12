@@ -99,6 +99,7 @@ test('doctor passes a healthy workspace', () => {
   assert.match(result.output, /PASS runtime source boundaries/);
   assert.match(result.output, /PASS backend menu resource boundary/);
   assert.match(result.output, /PASS backend public permission boundary/);
+  assert.match(result.output, /PASS backend admin middleware boundary/);
   assert.match(result.output, /PASS web manifest menu boundary/);
   assert.match(result.output, /PASS web env config boundary/);
 });
@@ -151,14 +152,73 @@ test('doctor fails when backend admin code uses public permissions', () => {
   const paths = makeWorkspace();
   fs.writeFileSync(
     path.join(paths.backendRoot, 'app/PublicPermissionController.php'),
-    '<?php #[Permission(public: true)] final class PublicPermissionController {}' + '\n',
+    '<?php #[Permission(public: false)] final class PublicPermissionController {}' + '\n',
   );
 
   const result = captureDoctor(paths);
 
   assert.equal(result.exitCode, 1);
   assert.match(result.output, /FAIL backend public permission boundary/);
-  assert.match(result.output, /Permission\(public: true\)/);
+  assert.match(result.output, /Permission\(public: \.\.\.\)/);
+});
+
+test('doctor fails when admin permission middleware omits auth middleware', () => {
+  const paths = makeWorkspace();
+  fs.writeFileSync(
+    path.join(paths.backendRoot, 'app/PermissionOnlyController.php'),
+    '<?php #[AdminRouteController(path: "/bad", middleware: [PermissionMiddleware::class])] final class PermissionOnlyController { #[AdminGet("index")] public function index(): array { return []; } }' +
+      '\n',
+  );
+
+  const result = captureDoctor(paths);
+
+  assert.equal(result.exitCode, 1);
+  assert.match(result.output, /FAIL backend admin middleware boundary/);
+  assert.match(result.output, /PermissionMiddleware without AdminAuthMiddleware/);
+});
+
+test('doctor fails when admin permission middleware runs before auth middleware', () => {
+  const paths = makeWorkspace();
+  fs.writeFileSync(
+    path.join(paths.backendRoot, 'app/ReversedMiddlewareController.php'),
+    '<?php #[AdminRouteController(path: "/bad", middleware: [PermissionMiddleware::class, AdminAuthMiddleware::class])] final class ReversedMiddlewareController { #[AdminGet("index")] public function index(): array { return []; } }' +
+      '\n',
+  );
+
+  const result = captureDoctor(paths);
+
+  assert.equal(result.exitCode, 1);
+  assert.match(result.output, /FAIL backend admin middleware boundary/);
+  assert.match(result.output, /PermissionMiddleware before AdminAuthMiddleware/);
+});
+
+test('doctor fails when admin permission annotation has no permission middleware', () => {
+  const paths = makeWorkspace();
+  fs.writeFileSync(
+    path.join(paths.backendRoot, 'app/MissingPermissionMiddlewareController.php'),
+    '<?php #[AdminRouteController(path: "/bad", middleware: [AdminAuthMiddleware::class])] final class MissingPermissionMiddlewareController { #[Permission("bad.index")] #[AdminGet("index")] public function index(): array { return []; } }' +
+      '\n',
+  );
+
+  const result = captureDoctor(paths);
+
+  assert.equal(result.exitCode, 1);
+  assert.match(result.output, /FAIL backend admin middleware boundary/);
+  assert.match(result.output, /declares #\[Permission\] without PermissionMiddleware/);
+});
+
+test('doctor accepts method permission middleware after class auth middleware', () => {
+  const paths = makeWorkspace();
+  fs.writeFileSync(
+    path.join(paths.backendRoot, 'app/MethodPermissionMiddlewareController.php'),
+    '<?php #[AdminRouteController(path: "/ok", middleware: [AdminAuthMiddleware::class])] final class MethodPermissionMiddlewareController { #[Permission("ok.index")] #[AdminGet("index", middleware: [PermissionMiddleware::class])] public function index(): array { return []; } }' +
+      '\n',
+  );
+
+  const result = captureDoctor(paths);
+
+  assert.equal(result.exitCode, undefined);
+  assert.doesNotMatch(result.output, /FAIL backend admin middleware boundary/);
 });
 
 test('doctor fails when plugin runtime drifts from source package', () => {

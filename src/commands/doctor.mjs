@@ -15,6 +15,7 @@ export const runDoctorCommand = (paths = workspacePaths()) => {
     checkRuntimeSourceBoundaries(paths),
     checkBackendMenuResourceBoundary(paths),
     checkBackendPublicPermissionBoundary(paths),
+    checkBackendAdminMiddlewareBoundary(paths),
     checkWebManifestMenuBoundary(paths),
     checkWebEnvConfigBoundary(paths),
     checkTemplatePackageBoundaries(paths),
@@ -191,15 +192,28 @@ const checkBackendMenuResourceBoundary = (paths) => {
 
 const checkBackendPublicPermissionBoundary = (paths) => {
   const violations = [
-    ...scanFilesByRegex(paths.backendRoot, /#\[\s*Permission\s*\([^)]*public\s*:\s*true/s, 'declares #[Permission(public: true)]'),
-    ...scanFilesByRegex(paths.pluginSourceRoot, /#\[\s*Permission\s*\([^)]*public\s*:\s*true/s, 'declares #[Permission(public: true)]'),
+    ...scanFilesByRegex(paths.backendRoot, /#\[\s*Permission\s*\([^)]*public\s*:/s, 'uses unsupported #[Permission(public: ...)]'),
+    ...scanFilesByRegex(paths.pluginSourceRoot, /#\[\s*Permission\s*\([^)]*public\s*:/s, 'uses unsupported #[Permission(public: ...)]'),
   ];
 
   if (violations.length > 0) {
     return fail('backend public permission boundary', violations.slice(0, 8).join('; '));
   }
 
-  return pass('backend public permission boundary', 'login-only admin APIs omit #[Permission] instead of using public permissions.');
+  return pass('backend public permission boundary', 'Permission attributes do not use unsupported public mode.');
+};
+
+const checkBackendAdminMiddlewareBoundary = (paths) => {
+  const violations = [
+    ...scanAdminRouteMiddlewareBoundaries(paths.backendRoot),
+    ...scanAdminRouteMiddlewareBoundaries(paths.pluginSourceRoot),
+  ];
+
+  if (violations.length > 0) {
+    return fail('backend admin middleware boundary', violations.slice(0, 8).join('; '));
+  }
+
+  return pass('backend admin middleware boundary', 'permissioned admin routes include auth and permission middleware in order.');
 };
 
 const checkWebManifestMenuBoundary = (paths) => {
@@ -322,6 +336,169 @@ const checkBackendAnnotationFile = (file, paths) => {
 const readJsonFile = (file) => JSON.parse(fs.readFileSync(file, 'utf8'));
 
 const isTrueAdminPackage = (name) => name === 'trueadmin' || name.startsWith('@trueadmin/');
+
+const scanAdminRouteMiddlewareBoundaries = (root) => {
+  if (!fs.existsSync(root)) {
+    return [];
+  }
+
+  const violations = [];
+  const stack = [root];
+  const ignoredDirectories = new Set(['.git', 'node_modules', 'vendor', 'runtime', 'dist', 'build', '.vite', '.turbo']);
+
+  while (stack.length > 0) {
+    const current = stack.pop();
+    for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
+      const file = path.join(current, entry.name);
+      if (entry.isDirectory()) {
+        if (!ignoredDirectories.has(entry.name)) {
+          stack.push(file);
+        }
+        continue;
+      }
+
+      if (!entry.isFile() || path.extname(entry.name) !== '.php') {
+        continue;
+      }
+
+      const content = fs.readFileSync(file, 'utf8');
+      if (!isAdminControllerSource(file, content)) {
+        continue;
+      }
+
+      const relative = relativePath(path.dirname(root), file);
+      const attributes = phpAttributes(content);
+      const classIndex = content.search(/\bclass\s+[A-Za-z_][A-Za-z0-9_]*/);
+      const classAttributes = classIndex === -1 ? [] : attributes.filter((attribute) => attribute.end <= classIndex);
+      const classMiddleware = classAttributes
+        .filter((attribute) => isAttribute(attribute.source, ['AdminController', 'AdminRouteController']))
+        .flatMap((attribute) => middlewareClasses(attribute.source));
+      const classHasPermission = classAttributes.some((attribute) => isAttribute(attribute.source, ['Permission']));
+      const functionMatches = [...content.matchAll(/\bfunction\s+[A-Za-z_][A-Za-z0-9_]*\s*\(/g)];
+      let previousFunctionEnd = classIndex === -1 ? 0 : classIndex;
+
+      for (const functionMatch of functionMatches) {
+        const functionIndex = functionMatch.index ?? 0;
+        const methodAttributes = attributes.filter(
+          (attribute) => attribute.start >= previousFunctionEnd && attribute.end <= functionIndex,
+        );
+        const routeAttributes = methodAttributes.filter((attribute) => isAdminRouteMappingAttribute(attribute.source));
+        if (routeAttributes.length === 0) {
+          previousFunctionEnd = functionIndex + functionMatch[0].length;
+          continue;
+        }
+
+        const methodHasPermission = methodAttributes.some((attribute) => isAttribute(attribute.source, ['Permission']));
+        const requiresPermission = classHasPermission || methodHasPermission;
+
+        for (const routeAttribute of routeAttributes) {
+          const routeMiddleware = uniqueClasses([
+            ...classMiddleware,
+            ...middlewareClasses(routeAttribute.source),
+          ]);
+
+          const permissionIndex = routeMiddleware.indexOf('PermissionMiddleware');
+          const authIndex = routeMiddleware.indexOf('AdminAuthMiddleware');
+
+          if (requiresPermission && permissionIndex === -1) {
+            violations.push(`${relative} declares #[Permission] without PermissionMiddleware`);
+          }
+          if (permissionIndex !== -1 && authIndex === -1) {
+            violations.push(`${relative} uses PermissionMiddleware without AdminAuthMiddleware`);
+          }
+          if (permissionIndex !== -1 && authIndex !== -1 && authIndex > permissionIndex) {
+            violations.push(`${relative} lists PermissionMiddleware before AdminAuthMiddleware`);
+          }
+        }
+
+        previousFunctionEnd = functionIndex + functionMatch[0].length;
+      }
+    }
+  }
+
+  return violations;
+};
+
+const isAdminControllerSource = (file, content) => {
+  const segments = file.split(path.sep);
+
+  return /#\[\s*Admin(?:Route)?Controller\b/.test(content) || (segments.includes('Admin') && segments.includes('Controller'));
+};
+
+const isAdminRouteMappingAttribute = (source) =>
+  isAttribute(source, ['AdminGet', 'AdminPost', 'AdminPut', 'AdminDelete']);
+
+const isAttribute = (source, names) => {
+  const argumentIndex = source.indexOf('(');
+  const endIndex = argumentIndex === -1 ? source.indexOf(']') : argumentIndex;
+  const name = source
+    .slice(0, endIndex === -1 ? source.length : endIndex)
+    .replace(/^#\[\s*/, '')
+    .trim()
+    .split('\\')
+    .pop();
+
+  return name !== undefined && names.includes(name);
+};
+
+const middlewareClasses = (source) => {
+  const match = source.match(/middleware\s*:\s*\[([\s\S]*?)\]/);
+  if (!match) {
+    return [];
+  }
+
+  return [...match[1].matchAll(/([A-Za-z_][A-Za-z0-9_\\\\]*)::class/g)].map((item) => classBasename(item[1]));
+};
+
+const classBasename = (className) => className.split('\\').pop() ?? className;
+
+const uniqueClasses = (classes) => {
+  const seen = new Set();
+  const result = [];
+  for (const className of classes) {
+    if (!seen.has(className)) {
+      seen.add(className);
+      result.push(className);
+    }
+  }
+
+  return result;
+};
+
+const phpAttributes = (content) => {
+  const attributes = [];
+  let index = 0;
+
+  while (index < content.length) {
+    const start = content.indexOf('#[', index);
+    if (start === -1) {
+      break;
+    }
+
+    let depth = 0;
+    let end = start;
+    for (; end < content.length; end += 1) {
+      if (content[end] === '[') {
+        depth += 1;
+      } else if (content[end] === ']') {
+        depth -= 1;
+        if (depth === 0) {
+          end += 1;
+          break;
+        }
+      }
+    }
+
+    attributes.push({
+      source: content.slice(start, end),
+      start,
+      end,
+    });
+    index = end;
+  }
+
+  return attributes;
+};
 
 const scanFilesByRegex = (root, pattern, message) => {
   if (!fs.existsSync(root)) {

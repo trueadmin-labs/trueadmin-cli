@@ -1,6 +1,6 @@
 {
   "name": "@trueadmin/cli",
-  "version": "0.1.11",
+  "version": "0.1.12",
   "description": "Framework-level CLI for TrueAdmin.",
   "license": "MIT",
   "repository": {
