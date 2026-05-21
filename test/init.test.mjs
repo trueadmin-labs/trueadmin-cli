@@ -68,9 +68,9 @@ test('init clones a template and removes git metadata by default', () => {
   assert.equal(fs.existsSync(path.join(cwd, 'demo/package.json')), true);
   assert.equal(fs.existsSync(path.join(cwd, 'demo/.git')), false);
   assert.match(output, /pnpm --dir web install/);
-  assert.match(output, /composer --working-dir=backend install/);
+  assert.match(output, /composer --working-dir=hyperf install/);
   assert.match(output, /docker compose -f deploy\/docker\/docker-compose\.yml up -d/);
-  assert.match(output, /php backend\/bin\/hyperf\.php migrate:fresh --seed/);
+  assert.match(output, /php hyperf\/bin\/hyperf\.php migrate:fresh --seed/);
 });
 
 test('init keeps git metadata when requested', () => {

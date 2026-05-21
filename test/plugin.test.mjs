@@ -19,18 +19,18 @@ const makeWorkspace = () => {
     root,
     pluginConfig: path.join(root, 'plugins.config.json'),
     pluginSourceRoot: path.join(root, 'plugins'),
-    backendRoot: path.join(root, 'backend'),
-    backendPluginRuntimeRoot: path.join(root, 'backend/plugins'),
-    backendPluginConfig: path.join(root, 'backend/config/autoload/plugins.php'),
+    hyperfRoot: path.join(root, 'hyperf'),
+    hyperfPluginRuntimeRoot: path.join(root, 'hyperf/plugins'),
+    hyperfPluginConfig: path.join(root, 'hyperf/config/autoload/plugins.php'),
     webRoot: path.join(root, 'web'),
     webPluginRuntimeRoot: path.join(root, 'web/src/plugins'),
     webPluginConfig: path.join(root, 'web/config/plugin.ts'),
   };
 
-  fs.mkdirSync(path.dirname(paths.backendPluginConfig), { recursive: true });
+  fs.mkdirSync(path.dirname(paths.hyperfPluginConfig), { recursive: true });
   fs.mkdirSync(path.dirname(paths.webPluginConfig), { recursive: true });
   fs.mkdirSync(path.join(root, 'plugins/acme/demo'), { recursive: true });
-  fs.mkdirSync(path.join(root, 'backend/plugins/acme/demo'), { recursive: true });
+  fs.mkdirSync(path.join(root, 'hyperf/plugins/acme/demo'), { recursive: true });
   fs.mkdirSync(path.join(root, 'web/src/plugins/acme/demo'), { recursive: true });
   fs.writeFileSync(
     path.join(root, 'plugins/acme/demo/plugin.json'),
@@ -52,7 +52,7 @@ const makeWorkspace = () => {
         installed: {
           'acme.demo': {
             source: 'plugins/acme/demo',
-            backendPath: 'backend/plugins/acme/demo',
+            hyperfPath: 'hyperf/plugins/acme/demo',
             webPath: 'web/src/plugins/acme/demo',
             version: '1.2.3',
             enabled: true,
@@ -83,17 +83,17 @@ const makeInstallWorkspace = () => {
     root,
     pluginConfig: path.join(root, 'plugins.config.json'),
     pluginSourceRoot: path.join(root, 'plugins'),
-    backendRoot: path.join(root, 'backend'),
-    backendPluginRuntimeRoot: path.join(root, 'backend/plugins'),
-    backendPluginConfig: path.join(root, 'backend/config/autoload/plugins.php'),
+    hyperfRoot: path.join(root, 'hyperf'),
+    hyperfPluginRuntimeRoot: path.join(root, 'hyperf/plugins'),
+    hyperfPluginConfig: path.join(root, 'hyperf/config/autoload/plugins.php'),
     webRoot: path.join(root, 'web'),
     webPluginRuntimeRoot: path.join(root, 'web/src/plugins'),
     webPluginConfig: path.join(root, 'web/config/plugin.ts'),
   };
 
-  fs.mkdirSync(path.join(root, 'plugins/acme/demo/backend/php'), { recursive: true });
+  fs.mkdirSync(path.join(root, 'plugins/acme/demo/hyperf/php'), { recursive: true });
   fs.mkdirSync(path.join(root, 'plugins/acme/demo/web'), { recursive: true });
-  fs.mkdirSync(path.dirname(paths.backendPluginConfig), { recursive: true });
+  fs.mkdirSync(path.dirname(paths.hyperfPluginConfig), { recursive: true });
   fs.mkdirSync(path.dirname(paths.webPluginConfig), { recursive: true });
   fs.writeFileSync(
     path.join(root, 'plugins/acme/demo/plugin.json'),
@@ -109,7 +109,7 @@ const makeInstallWorkspace = () => {
     ),
   );
   fs.writeFileSync(
-    path.join(root, 'plugins/acme/demo/backend/php/composer.json'),
+    path.join(root, 'plugins/acme/demo/hyperf/php/composer.json'),
     JSON.stringify({ name: 'acme/demo', require: { 'monolog/monolog': '^3.0' } }, null, 2),
   );
   fs.writeFileSync(path.join(root, 'plugins/acme/demo/web/manifest.ts'), 'export default {};\n');
@@ -148,15 +148,15 @@ test('generates endpoint-local plugin config files', () => {
   const paths = makeWorkspace();
   const generated = generatedPluginConfig(paths);
 
-  assert.match(generated.backend, /BASE_PATH \. '\/plugins\/acme\/demo'/);
-  assert.match(generated.backend, /'version' => '1.2.3'/);
-  assert.match(generated.backend, /'defaults' => \[/);
+  assert.match(generated.hyperf, /BASE_PATH \. '\/plugins\/acme\/demo'/);
+  assert.match(generated.hyperf, /'version' => '1.2.3'/);
+  assert.match(generated.hyperf, /'defaults' => \[/);
   assert.match(generated.web, /import type \{ PluginRuntimeConfig \}/);
   assert.match(generated.web, /'acme.demo': \{/);
   assert.match(generated.web, /enabled: true/);
   assert.match(generated.web, /color: 'green'/);
-  assert.doesNotMatch(generated.backend, /plugins\.config\.json|web\/config|web\/src\/plugins/);
-  assert.doesNotMatch(generated.web, /plugins\.config\.json|backend\/config|backend\/plugins/);
+  assert.doesNotMatch(generated.hyperf, /plugins\.config\.json|web\/config|web\/src\/plugins/);
+  assert.doesNotMatch(generated.web, /plugins\.config\.json|hyperf\/config|hyperf\/plugins/);
 });
 
 test('sync writes generated plugin config files', () => {
@@ -165,7 +165,7 @@ test('sync writes generated plugin config files', () => {
   syncPluginConfig(paths);
 
   const generated = generatedPluginConfig(paths);
-  assert.equal(fs.readFileSync(paths.backendPluginConfig, 'utf8'), generated.backend);
+  assert.equal(fs.readFileSync(paths.hyperfPluginConfig, 'utf8'), generated.hyperf);
   assert.equal(fs.readFileSync(paths.webPluginConfig, 'utf8'), generated.web);
 });
 
@@ -193,7 +193,7 @@ test('collects plugin runtime dependency install plan', () => {
   const plan = createPluginDependencyPlan(path.join(paths.root, 'plugins/acme/demo'), paths);
 
   assert.deepEqual(plan.web, { '@ant-design/charts': '^2.6.7' });
-  assert.deepEqual(plan.backend, { 'monolog/monolog': '^3.0' });
+  assert.deepEqual(plan.hyperf, { 'monolog/monolog': '^3.0' });
   assert.deepEqual(plan.backendPackages, { 'monolog/monolog': '^3.0' });
 });
 
@@ -202,19 +202,19 @@ test('install copies runtime files and syncs endpoint configs', () => {
 
   installPlugin(['acme/demo'], paths);
 
-  assert.equal(fs.existsSync(path.join(paths.root, 'backend/plugins/acme/demo/composer.json')), true);
+  assert.equal(fs.existsSync(path.join(paths.root, 'hyperf/plugins/acme/demo/composer.json')), true);
   assert.equal(fs.existsSync(path.join(paths.root, 'web/src/plugins/acme/demo/manifest.ts')), true);
   assert.equal(fs.existsSync(path.join(paths.root, 'web/src/plugins/acme/demo/package.json')), true);
 
   const config = readPluginConfig(paths);
   assert.equal(config.installed['acme.demo'].source, 'plugins/acme/demo');
-  assert.equal(config.installed['acme.demo'].backendPath, 'backend/plugins/acme/demo');
+  assert.equal(config.installed['acme.demo'].hyperfPath, 'hyperf/plugins/acme/demo');
   assert.equal(config.installed['acme.demo'].webPath, 'web/src/plugins/acme/demo');
   assert.equal(config.installed['acme.demo'].enabled, true);
   assert.equal(config.config['acme.demo'].color, 'green');
 
   const generated = generatedPluginConfig(paths);
-  assert.equal(fs.readFileSync(paths.backendPluginConfig, 'utf8'), generated.backend);
+  assert.equal(fs.readFileSync(paths.hyperfPluginConfig, 'utf8'), generated.hyperf);
   assert.equal(fs.readFileSync(paths.webPluginConfig, 'utf8'), generated.web);
 });
 

@@ -12,18 +12,18 @@ const makeWorkspace = () => {
     root,
     pluginConfig: path.join(root, 'plugins.config.json'),
     pluginSourceRoot: path.join(root, 'plugins'),
-    backendRoot: path.join(root, 'backend'),
-    backendPluginRuntimeRoot: path.join(root, 'backend/plugins'),
-    backendPluginConfig: path.join(root, 'backend/config/autoload/plugins.php'),
+    hyperfRoot: path.join(root, 'hyperf'),
+    hyperfPluginRuntimeRoot: path.join(root, 'hyperf/plugins'),
+    hyperfPluginConfig: path.join(root, 'hyperf/config/autoload/plugins.php'),
     webRoot: path.join(root, 'web'),
     webPluginRuntimeRoot: path.join(root, 'web/src/plugins'),
     webPluginConfig: path.join(root, 'web/config/plugin.ts'),
   };
 
   fs.mkdirSync(path.join(root, 'plugins/acme/demo'), { recursive: true });
-  fs.mkdirSync(path.join(root, 'backend/app'), { recursive: true });
-  fs.mkdirSync(path.join(root, 'backend/plugins/acme/demo'), { recursive: true });
-  fs.mkdirSync(path.dirname(paths.backendPluginConfig), { recursive: true });
+  fs.mkdirSync(path.join(root, 'hyperf/app'), { recursive: true });
+  fs.mkdirSync(path.join(root, 'hyperf/plugins/acme/demo'), { recursive: true });
+  fs.mkdirSync(path.dirname(paths.hyperfPluginConfig), { recursive: true });
   fs.mkdirSync(path.join(root, 'web/src/plugins/acme/demo'), { recursive: true });
   fs.mkdirSync(path.dirname(paths.webPluginConfig), { recursive: true });
   fs.writeFileSync(
@@ -46,7 +46,7 @@ const makeWorkspace = () => {
         installed: {
           'acme.demo': {
             source: 'plugins/acme/demo',
-            backendPath: 'backend/plugins/acme/demo',
+            hyperfPath: 'hyperf/plugins/acme/demo',
             webPath: 'web/src/plugins/acme/demo',
             version: '1.2.3',
             enabled: true,
@@ -97,9 +97,9 @@ test('doctor passes a healthy workspace', () => {
   assert.match(result.output, /PASS generated plugin files/);
   assert.match(result.output, /PASS installed plugin runtime drift/);
   assert.match(result.output, /PASS runtime source boundaries/);
-  assert.match(result.output, /PASS backend menu resource boundary/);
-  assert.match(result.output, /PASS backend public permission boundary/);
-  assert.match(result.output, /PASS backend admin middleware boundary/);
+  assert.match(result.output, /PASS hyperf menu resource boundary/);
+  assert.match(result.output, /PASS hyperf public permission boundary/);
+  assert.match(result.output, /PASS hyperf admin middleware boundary/);
   assert.match(result.output, /PASS web manifest menu boundary/);
   assert.match(result.output, /PASS web env config boundary/);
 });
@@ -117,7 +117,7 @@ test('doctor fails when generated plugin files are stale', () => {
 
 test('doctor fails on cross-end runtime source references', () => {
   const paths = makeWorkspace();
-  fs.writeFileSync(path.join(paths.backendRoot, 'app/BadBoundary.php'), '<?php // web/config/plugin.ts' + '\n');
+  fs.writeFileSync(path.join(paths.hyperfRoot, 'app/BadBoundary.php'), '<?php // web/config/plugin.ts' + '\n');
 
   const result = captureDoctor(paths);
 
@@ -137,35 +137,35 @@ test('doctor fails when web runtime reads env directly', () => {
   assert.match(result.output, /import\.meta\.env/);
 });
 
-test('doctor fails when backend controller declares menu attributes', () => {
+test('doctor fails when hyperf controller declares menu attributes', () => {
   const paths = makeWorkspace();
-  fs.writeFileSync(path.join(paths.backendRoot, 'app/MenuController.php'), '<?php #[Menu(code: "bad")] final class MenuController {}' + '\n');
+  fs.writeFileSync(path.join(paths.hyperfRoot, 'app/MenuController.php'), '<?php #[Menu(code: "bad")] final class MenuController {}' + '\n');
 
   const result = captureDoctor(paths);
 
   assert.equal(result.exitCode, 1);
-  assert.match(result.output, /FAIL backend menu resource boundary/);
+  assert.match(result.output, /FAIL hyperf menu resource boundary/);
   assert.match(result.output, /#\[Menu/);
 });
 
-test('doctor fails when backend admin code uses public permissions', () => {
+test('doctor fails when hyperf admin code uses public permissions', () => {
   const paths = makeWorkspace();
   fs.writeFileSync(
-    path.join(paths.backendRoot, 'app/PublicPermissionController.php'),
+    path.join(paths.hyperfRoot, 'app/PublicPermissionController.php'),
     '<?php #[Permission(public: false)] final class PublicPermissionController {}' + '\n',
   );
 
   const result = captureDoctor(paths);
 
   assert.equal(result.exitCode, 1);
-  assert.match(result.output, /FAIL backend public permission boundary/);
+  assert.match(result.output, /FAIL hyperf public permission boundary/);
   assert.match(result.output, /Permission\(public: \.\.\.\)/);
 });
 
 test('doctor fails when admin permission middleware omits auth middleware', () => {
   const paths = makeWorkspace();
   fs.writeFileSync(
-    path.join(paths.backendRoot, 'app/PermissionOnlyController.php'),
+    path.join(paths.hyperfRoot, 'app/PermissionOnlyController.php'),
     '<?php #[AdminRouteController(path: "/bad", middleware: [PermissionMiddleware::class])] final class PermissionOnlyController { #[AdminGet("index")] public function index(): array { return []; } }' +
       '\n',
   );
@@ -173,14 +173,14 @@ test('doctor fails when admin permission middleware omits auth middleware', () =
   const result = captureDoctor(paths);
 
   assert.equal(result.exitCode, 1);
-  assert.match(result.output, /FAIL backend admin middleware boundary/);
+  assert.match(result.output, /FAIL hyperf admin middleware boundary/);
   assert.match(result.output, /PermissionMiddleware without AdminAuthMiddleware/);
 });
 
 test('doctor fails when admin permission middleware runs before auth middleware', () => {
   const paths = makeWorkspace();
   fs.writeFileSync(
-    path.join(paths.backendRoot, 'app/ReversedMiddlewareController.php'),
+    path.join(paths.hyperfRoot, 'app/ReversedMiddlewareController.php'),
     '<?php #[AdminRouteController(path: "/bad", middleware: [PermissionMiddleware::class, AdminAuthMiddleware::class])] final class ReversedMiddlewareController { #[AdminGet("index")] public function index(): array { return []; } }' +
       '\n',
   );
@@ -188,14 +188,14 @@ test('doctor fails when admin permission middleware runs before auth middleware'
   const result = captureDoctor(paths);
 
   assert.equal(result.exitCode, 1);
-  assert.match(result.output, /FAIL backend admin middleware boundary/);
+  assert.match(result.output, /FAIL hyperf admin middleware boundary/);
   assert.match(result.output, /PermissionMiddleware before AdminAuthMiddleware/);
 });
 
 test('doctor fails when admin permission annotation has no permission middleware', () => {
   const paths = makeWorkspace();
   fs.writeFileSync(
-    path.join(paths.backendRoot, 'app/MissingPermissionMiddlewareController.php'),
+    path.join(paths.hyperfRoot, 'app/MissingPermissionMiddlewareController.php'),
     '<?php #[AdminRouteController(path: "/bad", middleware: [AdminAuthMiddleware::class])] final class MissingPermissionMiddlewareController { #[Permission("bad.index")] #[AdminGet("index")] public function index(): array { return []; } }' +
       '\n',
   );
@@ -203,14 +203,14 @@ test('doctor fails when admin permission annotation has no permission middleware
   const result = captureDoctor(paths);
 
   assert.equal(result.exitCode, 1);
-  assert.match(result.output, /FAIL backend admin middleware boundary/);
+  assert.match(result.output, /FAIL hyperf admin middleware boundary/);
   assert.match(result.output, /declares #\[Permission\] without class-level PermissionMiddleware/);
 });
 
 test('doctor fails when permission middleware is only declared on the method', () => {
   const paths = makeWorkspace();
   fs.writeFileSync(
-    path.join(paths.backendRoot, 'app/MethodPermissionMiddlewareController.php'),
+    path.join(paths.hyperfRoot, 'app/MethodPermissionMiddlewareController.php'),
     '<?php #[AdminRouteController(path: "/ok", middleware: [AdminAuthMiddleware::class])] final class MethodPermissionMiddlewareController { #[Permission("ok.index")] #[AdminGet("index", middleware: [PermissionMiddleware::class])] public function index(): array { return []; } }' +
       '\n',
   );
@@ -218,7 +218,7 @@ test('doctor fails when permission middleware is only declared on the method', (
   const result = captureDoctor(paths);
 
   assert.equal(result.exitCode, 1);
-  assert.match(result.output, /FAIL backend admin middleware boundary/);
+  assert.match(result.output, /FAIL hyperf admin middleware boundary/);
   assert.match(result.output, /without class-level PermissionMiddleware/);
 });
 
@@ -255,9 +255,9 @@ test('doctor fails on latest npm dependencies and TrueAdmin composer repositorie
     path.join(paths.webRoot, 'package.json'),
     JSON.stringify({ dependencies: { antd: 'latest' } }, null, 2),
   );
-  fs.mkdirSync(path.join(paths.backendRoot), { recursive: true });
+  fs.mkdirSync(path.join(paths.hyperfRoot), { recursive: true });
   fs.writeFileSync(
-    path.join(paths.backendRoot, 'composer.json'),
+    path.join(paths.hyperfRoot, 'composer.json'),
     JSON.stringify(
       {
         repositories: {

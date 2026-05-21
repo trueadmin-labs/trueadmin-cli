@@ -52,11 +52,11 @@ export const runInitCommand = (args, cwd = process.cwd()) => {
   console.log(`  cd ${displayTargetPath(targetName, targetPath, cwd)}`);
   console.log('  npm install');
   console.log('  pnpm --dir web install');
-  console.log('  composer --working-dir=backend install');
+  console.log('  composer --working-dir=hyperf install');
   console.log('  cp .env.example .env');
-  console.log('  cp backend/.env.example backend/.env');
+  console.log('  cp hyperf/.env.example hyperf/.env');
   console.log('  docker compose -f deploy/docker/docker-compose.yml up -d');
-  console.log('  php backend/bin/hyperf.php migrate:fresh --seed');
+  console.log('  php hyperf/bin/hyperf.php migrate:fresh --seed');
   console.log('  npm run doctor');
 };
 

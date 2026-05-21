@@ -9,9 +9,9 @@ export const stringList = (value) =>
 
 export const trimLeadingSlash = (value) => value.replace(/^\/+/, '');
 
-export const backendRelativePath = (value) => {
+export const hyperfRelativePath = (value) => {
   const normalized = trimLeadingSlash(value);
-  return normalized.startsWith('backend/') ? normalized.slice('backend/'.length) : normalized;
+  return normalized.startsWith('hyperf/') ? normalized.slice('hyperf/'.length) : normalized;
 };
 
 export const quotePhp = (value) => `'${String(value).replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`;
@@ -43,8 +43,8 @@ export const exportPhp = (value, level = 0) => {
       .join('\n')}\n${closing}]`;
   }
 
-  if (typeof value === 'string' && value.startsWith('BACKEND_BASE_PATH:')) {
-    return `BASE_PATH . ${quotePhp('/' + trimLeadingSlash(value.slice('BACKEND_BASE_PATH:'.length)))}`;
+  if (typeof value === 'string' && value.startsWith('HYPERF_BASE_PATH:')) {
+    return `BASE_PATH . ${quotePhp('/' + trimLeadingSlash(value.slice('HYPERF_BASE_PATH:'.length)))}`;
   }
   if (typeof value === 'string') {
     return quotePhp(value);

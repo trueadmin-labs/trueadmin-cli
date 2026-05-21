@@ -7,7 +7,7 @@ export const findWorkspaceRoot = (start = process.cwd()) => {
   while (true) {
     if (
       fs.existsSync(path.join(current, 'plugins.config.json')) ||
-      (fs.existsSync(path.join(current, 'backend')) && fs.existsSync(path.join(current, 'web')))
+      (fs.existsSync(path.join(current, 'hyperf')) && fs.existsSync(path.join(current, 'web')))
     ) {
       return current;
     }
@@ -25,9 +25,9 @@ export const workspacePaths = (root = findWorkspaceRoot()) => ({
   root,
   pluginConfig: path.join(root, 'plugins.config.json'),
   pluginSourceRoot: path.join(root, 'plugins'),
-  backendRoot: path.join(root, 'backend'),
-  backendPluginRuntimeRoot: path.join(root, 'backend/plugins'),
-  backendPluginConfig: path.join(root, 'backend/config/autoload/plugins.php'),
+  hyperfRoot: path.join(root, 'hyperf'),
+  hyperfPluginRuntimeRoot: path.join(root, 'hyperf/plugins'),
+  hyperfPluginConfig: path.join(root, 'hyperf/config/autoload/plugins.php'),
   webRoot: path.join(root, 'web'),
   webPluginRuntimeRoot: path.join(root, 'web/src/plugins'),
   webPluginConfig: path.join(root, 'web/config/plugin.ts'),

@@ -13,17 +13,17 @@ npx trueadmin init my-admin
 cd my-admin
 npm install
 pnpm --dir web install
-composer --working-dir=backend install
+composer --working-dir=hyperf install
 cp .env.example .env
-cp backend/.env.example backend/.env
+cp hyperf/.env.example hyperf/.env
 docker compose -f deploy/docker/docker-compose.yml up -d
-php backend/bin/hyperf.php migrate:fresh --seed
+php hyperf/bin/hyperf.php migrate:fresh --seed
 npm run doctor
 ```
 
 ## Boundary Model
 
 - `plugins.config.json` is framework-level input and is only read by the TrueAdmin CLI.
-- Backend runtime reads `backend/config/autoload/plugins.php` and `backend/plugins/**`.
+- Hyperf runtime reads `hyperf/config/autoload/plugins.php` and `hyperf/plugins/**`.
 - Web runtime reads `web/config/plugin.ts` and `web/src/plugins/**`.
-- `trueadmin doctor` checks generated files, installed runtimes, cross-end config boundary violations, backend menu resource boundaries, and Web env access boundaries.
+- `trueadmin doctor` checks generated files, installed runtimes, cross-end config boundary violations, hyperf menu resource boundaries, and Web env access boundaries.

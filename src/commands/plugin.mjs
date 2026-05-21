@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { backendRelativePath, exportPhp, exportTs, objectValue, stringList, stringValue } from '../shared/format.mjs';
+import { hyperfRelativePath, exportPhp, exportTs, objectValue, stringList, stringValue } from '../shared/format.mjs';
 import { relativePath, workspacePaths } from '../shared/workspace.mjs';
 
 export const pluginUsage = `Usage:
@@ -37,7 +37,7 @@ export const listPlugins = (paths = workspacePaths()) => {
     const definition = objectValue(installed[id]);
     const enabled = Boolean(definition.enabled ?? true) && !disabled.includes(id);
     console.log(
-      ` - ${id}:${stringValue(definition.version, 'unknown')} [${enabled ? 'enabled' : 'disabled'}] ${stringValue(definition.backendPath, '')}`,
+      ` - ${id}:${stringValue(definition.version, 'unknown')} [${enabled ? 'enabled' : 'disabled'}] ${stringValue(definition.hyperfPath, '')}`,
     );
   }
 };
@@ -64,17 +64,17 @@ export const validatePlugins = (paths = workspacePaths()) => {
       throw new Error(`Installed plugin [${id}] source must be [${expectedSource}].`);
     }
 
-    const backendPath = stringValue(item.backendPath, '');
+    const hyperfPath = stringValue(item.hyperfPath, '');
     const webPath = stringValue(item.webPath, '');
-    if (backendPath) {
-      assertRelativePathInside(backendPath, 'backend/plugins', `Plugin [${id}] backendPath`);
+    if (hyperfPath) {
+      assertRelativePathInside(hyperfPath, 'hyperf/plugins', `Plugin [${id}] hyperfPath`);
     }
     if (webPath) {
       assertRelativePathInside(webPath, 'web/src/plugins', `Plugin [${id}] webPath`);
     }
 
     const isEnabled = Boolean(item.enabled ?? true) && !disabled.includes(id);
-    for (const runtimePath of [backendPath, webPath].filter(Boolean)) {
+    for (const runtimePath of [hyperfPath, webPath].filter(Boolean)) {
       if (isEnabled && !fs.existsSync(path.join(paths.root, runtimePath))) {
         throw new Error(`Installed plugin [${id}] runtime is missing [${runtimePath}].`);
       }
@@ -103,16 +103,16 @@ export const installPlugin = (args, paths = workspacePaths()) => {
   assertPluginDependencies(pluginJson, objectValue(config.installed));
   const dependencyPlan = createPluginDependencyPlan(sourcePath, paths);
 
-  const backendPath = `backend/plugins/${vendor}/${name}`;
+  const hyperfPath = `hyperf/plugins/${vendor}/${name}`;
   const webPath = `web/src/plugins/${vendor}/${name}`;
-  const backendCopied = mirrorRuntime(path.join(sourcePath, 'backend/php'), path.join(paths.root, backendPath), force, paths);
+  const hyperfCopied = mirrorRuntime(path.join(sourcePath, 'hyperf/php'), path.join(paths.root, hyperfPath), force, paths);
   const webCopied = mirrorRuntime(path.join(sourcePath, 'web'), path.join(paths.root, webPath), force, paths);
 
   config.installed = objectValue(config.installed);
   const existing = objectValue(config.installed[id]);
   config.installed[id] = {
     source,
-    backendPath,
+    hyperfPath,
     webPath,
     version: pluginJson.version,
     enabled,
@@ -126,13 +126,13 @@ export const installPlugin = (args, paths = workspacePaths()) => {
   syncPluginConfig(paths);
 
   console.log(`Plugin installed: ${id}:${pluginJson.version} [${enabled ? 'enabled' : 'disabled'}]`);
-  console.log(`Runtime copied: backend=${backendCopied ? 'yes' : 'no'}, web=${webCopied ? 'yes' : 'no'}`);
+  console.log(`Runtime copied: hyperf=${hyperfCopied ? 'yes' : 'no'}, web=${webCopied ? 'yes' : 'no'}`);
   printPluginDependencyPlan(dependencyPlan);
 };
 
 export const createPluginDependencyPlan = (sourcePath, paths = workspacePaths()) => {
   const webPackage = readOptionalJson(path.join(sourcePath, 'web/package.json'), paths);
-  const composerPackage = readOptionalJson(path.join(sourcePath, 'backend/php/composer.json'), paths);
+  const composerPackage = readOptionalJson(path.join(sourcePath, 'hyperf/php/composer.json'), paths);
   const webDependencies = dependencyMap(webPackage.dependencies);
   const backendRequire = dependencyMap(composerPackage.require);
   const backendPackages = Object.fromEntries(
@@ -141,7 +141,7 @@ export const createPluginDependencyPlan = (sourcePath, paths = workspacePaths())
 
   return {
     web: webDependencies,
-    backend: backendRequire,
+    hyperf: backendRequire,
     backendPackages,
   };
 };
@@ -150,7 +150,7 @@ export const generatedPluginConfig = (paths = workspacePaths()) => {
   const config = readPluginConfig(paths);
 
   return {
-    backend: renderBackendPluginConfig(config),
+    hyperf: renderBackendPluginConfig(config),
     web: renderWebPluginConfig(config),
   };
 };
@@ -159,7 +159,7 @@ export const syncPluginConfig = (paths = workspacePaths()) => {
   validatePlugins(paths);
   const generated = generatedPluginConfig(paths);
 
-  fs.writeFileSync(paths.backendPluginConfig, generated.backend);
+  fs.writeFileSync(paths.hyperfPluginConfig, generated.hyperf);
   fs.writeFileSync(paths.webPluginConfig, generated.web);
 };
 
@@ -199,28 +199,36 @@ export const runPluginCommand = (args, paths) => {
 
 const renderBackendPluginConfig = (config) => {
   const installed = objectValue(config.installed);
-  const backendInstalled = {};
+  const hyperfInstalled = {};
 
   for (const [id, definition] of Object.entries(installed).sort(([a], [b]) => a.localeCompare(b))) {
     const item = objectValue(definition);
-    backendInstalled[id] = {
-      path: `BACKEND_BASE_PATH:${backendRelativePath(stringValue(item.backendPath, ''))}`,
+    hyperfInstalled[id] = {
+      path: `HYPERF_BASE_PATH:${hyperfRelativePath(stringValue(item.hyperfPath, ''))}`,
       version: stringValue(item.version, 'unknown'),
       enabled: Boolean(item.enabled ?? true),
       defaults: objectValue(item.defaults),
     };
   }
 
-  const backendConfig = {
-    installed: backendInstalled,
+  const hyperfConfig = {
+    installed: hyperfInstalled,
     disabled: stringList(config.disabled),
     config: objectValue(config.config),
   };
 
   return `<?php\n\n` +
-    `declare(strict_types=1);\n\n` +
+    `declare(strict_types=1);\n` +
+    `/**\n` +
+    ` * This file is part of Hyperf.\n` +
+    ` *\n` +
+    ` * @link     https://www.hyperf.io\n` +
+    ` * @document https://hyperf.wiki\n` +
+    ` * @contact  group@hyperf.io\n` +
+    ` * @license  https://github.com/hyperf/hyperf/blob/master/LICENSE\n` +
+    ` */\n` +
     `// This file is generated by trueadmin plugin sync. Do not edit manually.\n\n` +
-    `return ${exportPhp(backendConfig)};\n`;
+    `return ${exportPhp(hyperfConfig)};\n`;
 };
 
 const renderWebPluginConfig = (config) => {
@@ -298,7 +306,7 @@ const printPluginDependencyPlan = (plan) => {
 const renderPluginDependencyPlan = (plan) => {
   const lines = [];
   const webDependencies = Object.entries(objectValue(plan.web));
-  const backendRequire = Object.entries(objectValue(plan.backend));
+  const backendRequire = Object.entries(objectValue(plan.hyperf));
   const backendPackages = Object.entries(objectValue(plan.backendPackages));
 
   if (webDependencies.length > 0) {
@@ -310,21 +318,21 @@ const renderPluginDependencyPlan = (plan) => {
   }
 
   if (backendRequire.length > 0) {
-    lines.push(' - Backend dependencies from backend/php/composer.json:');
+    lines.push(' - Hyperf dependencies from hyperf/php/composer.json:');
     for (const [name, version] of backendRequire) {
       lines.push(`   ${name}: ${version}`);
     }
     if (backendPackages.length > 0) {
       lines.push(
-        `   Run: composer --working-dir=backend require ${backendPackages.map(formatComposerDependency).join(' ')}`,
+        `   Run: composer --working-dir=hyperf require ${backendPackages.map(formatComposerDependency).join(' ')}`,
       );
     } else {
-      lines.push('   Run: composer --working-dir=backend check-platform-reqs');
+      lines.push('   Run: composer --working-dir=hyperf check-platform-reqs');
     }
   }
 
   if (lines.length === 0) {
-    lines.push(' - no additional web or backend dependencies.');
+    lines.push(' - no additional web or hyperf dependencies.');
   }
 
   return lines;

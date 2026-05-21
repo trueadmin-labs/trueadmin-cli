@@ -40,7 +40,7 @@ const pass = (title, detail = '') => ({ status: 'pass', title, detail });
 const fail = (title, detail = '') => ({ status: 'fail', title, detail });
 
 const checkWorkspace = (paths) => {
-  for (const required of ['backend', 'web', 'plugins']) {
+  for (const required of ['hyperf', 'web', 'plugins']) {
     if (!fs.existsSync(path.join(paths.root, required))) {
       return fail('workspace layout', `Missing ${required}/ under ${paths.root}.`);
     }
@@ -62,7 +62,7 @@ const checkGeneratedPluginFiles = (paths) => {
   try {
     const generated = generatedPluginConfig(paths);
     const files = [
-      [paths.backendPluginConfig, generated.backend],
+      [paths.hyperfPluginConfig, generated.hyperf],
       [paths.webPluginConfig, generated.web],
     ];
     const stale = files
@@ -73,7 +73,7 @@ const checkGeneratedPluginFiles = (paths) => {
       return fail('generated plugin files', `Run trueadmin plugin sync. Stale: ${stale.join(', ')}`);
     }
 
-    return pass('generated plugin files', 'backend and web plugin config are synchronized.');
+    return pass('generated plugin files', 'hyperf and web plugin config are synchronized.');
   } catch (error) {
     return fail('generated plugin files', error instanceof Error ? error.message : String(error));
   }
@@ -86,7 +86,7 @@ const checkInstalledPluginRuntime = (paths) => {
 
   for (const [id, definition] of Object.entries(installed)) {
     const item = objectValue(definition);
-    for (const field of ['backendPath', 'webPath']) {
+    for (const field of ['hyperfPath', 'webPath']) {
       const runtimePath = stringValue(item[field], '');
       if (runtimePath && !fs.existsSync(path.join(paths.root, runtimePath))) {
         missing.push(`${id}:${runtimePath}`);
@@ -114,15 +114,15 @@ const checkInstalledPluginRuntimeDrift = (paths) => {
     }
 
     const sourceRoot = path.join(paths.root, source);
-    const backendSource = path.join(sourceRoot, 'backend/php');
+    const hyperfSource = path.join(sourceRoot, 'hyperf/php');
     const webSource = path.join(sourceRoot, 'web');
-    const backendRuntime = path.join(paths.root, stringValue(item.backendPath, ''));
+    const hyperfRuntime = path.join(paths.root, stringValue(item.hyperfPath, ''));
     const webRuntime = path.join(paths.root, stringValue(item.webPath, ''));
 
-    if (fs.existsSync(backendSource) || fs.existsSync(backendRuntime)) {
+    if (fs.existsSync(hyperfSource) || fs.existsSync(hyperfRuntime)) {
       drift.push(
-        ...compareDirectoryTrees(backendSource, backendRuntime).map(
-          (entry) => `${id}:backend:${entry}`,
+        ...compareDirectoryTrees(hyperfSource, hyperfRuntime).map(
+          (entry) => `${id}:hyperf:${entry}`,
         ),
       );
     }
@@ -142,18 +142,18 @@ const checkInstalledPluginRuntimeDrift = (paths) => {
 const checkRuntimeConfigBoundaries = (paths) => {
   const violations = [];
 
-  if (fs.existsSync(paths.backendPluginConfig)) {
-    const content = fs.readFileSync(paths.backendPluginConfig, 'utf8');
+  if (fs.existsSync(paths.hyperfPluginConfig)) {
+    const content = fs.readFileSync(paths.hyperfPluginConfig, 'utf8');
     for (const pattern of ['plugins.config.json', 'web/config', 'web/src/plugins', 'marketplaces']) {
       if (content.includes(pattern)) {
-        violations.push(`${relativePath(paths.root, paths.backendPluginConfig)} references ${pattern}`);
+        violations.push(`${relativePath(paths.root, paths.hyperfPluginConfig)} references ${pattern}`);
       }
     }
   }
 
   if (fs.existsSync(paths.webPluginConfig)) {
     const content = fs.readFileSync(paths.webPluginConfig, 'utf8');
-    for (const pattern of ['plugins.config.json', 'backend/config', 'backend/plugins', 'marketplaces']) {
+    for (const pattern of ['plugins.config.json', 'hyperf/config', 'hyperf/plugins', 'marketplaces']) {
       if (content.includes(pattern)) {
         violations.push(`${relativePath(paths.root, paths.webPluginConfig)} references ${pattern}`);
       }
@@ -169,51 +169,51 @@ const checkRuntimeConfigBoundaries = (paths) => {
 
 const checkRuntimeSourceBoundaries = (paths) => {
   const violations = [
-    ...scanFiles(paths.backendRoot, ['plugins.config.json', 'web/config', 'web/src/plugins', '../web', '../../plugins/']),
-    ...scanFiles(paths.webRoot, ['plugins.config.json', 'backend/config', 'backend/plugins', '../backend', '../../plugins/']),
+    ...scanFiles(paths.hyperfRoot, ['plugins.config.json', 'web/config', 'web/src/plugins', '../web', '../../plugins/']),
+    ...scanFiles(paths.webRoot, ['plugins.config.json', 'hyperf/config', 'hyperf/plugins', '../hyperf', '../../plugins/']),
   ];
 
   if (violations.length > 0) {
     return fail('runtime source boundaries', violations.slice(0, 8).join('; '));
   }
 
-  return pass('runtime source boundaries', 'backend and web runtime code do not read cross-end framework config.');
+  return pass('runtime source boundaries', 'hyperf and web runtime code do not read cross-end framework config.');
 };
 
 const checkBackendMenuResourceBoundary = (paths) => {
-  const violations = scanFiles(paths.backendRoot, ['#[Menu']);
+  const violations = scanFiles(paths.hyperfRoot, ['#[Menu']);
 
   if (violations.length > 0) {
-    return fail('backend menu resource boundary', violations.slice(0, 8).join('; '));
+    return fail('hyperf menu resource boundary', violations.slice(0, 8).join('; '));
   }
 
-  return pass('backend menu resource boundary', 'backend menus are declared by resources/menus.php.');
+  return pass('hyperf menu resource boundary', 'hyperf menus are declared by resources/menus.php.');
 };
 
 const checkBackendPublicPermissionBoundary = (paths) => {
   const violations = [
-    ...scanFilesByRegex(paths.backendRoot, /#\[\s*Permission\s*\([^)]*public\s*:/s, 'uses unsupported #[Permission(public: ...)]'),
+    ...scanFilesByRegex(paths.hyperfRoot, /#\[\s*Permission\s*\([^)]*public\s*:/s, 'uses unsupported #[Permission(public: ...)]'),
     ...scanFilesByRegex(paths.pluginSourceRoot, /#\[\s*Permission\s*\([^)]*public\s*:/s, 'uses unsupported #[Permission(public: ...)]'),
   ];
 
   if (violations.length > 0) {
-    return fail('backend public permission boundary', violations.slice(0, 8).join('; '));
+    return fail('hyperf public permission boundary', violations.slice(0, 8).join('; '));
   }
 
-  return pass('backend public permission boundary', 'Permission attributes do not use unsupported public mode.');
+  return pass('hyperf public permission boundary', 'Permission attributes do not use unsupported public mode.');
 };
 
 const checkBackendAdminMiddlewareBoundary = (paths) => {
   const violations = [
-    ...scanAdminRouteMiddlewareBoundaries(paths.backendRoot),
+    ...scanAdminRouteMiddlewareBoundaries(paths.hyperfRoot),
     ...scanAdminRouteMiddlewareBoundaries(paths.pluginSourceRoot),
   ];
 
   if (violations.length > 0) {
-    return fail('backend admin middleware boundary', violations.slice(0, 8).join('; '));
+    return fail('hyperf admin middleware boundary', violations.slice(0, 8).join('; '));
   }
 
-  return pass('backend admin middleware boundary', 'permissioned admin controllers declare auth and permission middleware in order.');
+  return pass('hyperf admin middleware boundary', 'permissioned admin controllers declare auth and permission middleware in order.');
 };
 
 const checkWebManifestMenuBoundary = (paths) => {
@@ -244,15 +244,15 @@ const checkTemplatePackageBoundaries = (paths) => {
   const violations = [
     ...checkPackageFile(path.join(paths.root, 'package.json'), paths),
     ...checkPackageFile(path.join(paths.webRoot, 'package.json'), paths),
-    ...checkComposerFile(path.join(paths.backendRoot, 'composer.json'), paths),
-    ...checkBackendAnnotationFile(path.join(paths.backendRoot, 'config/autoload/annotations.php'), paths),
+    ...checkComposerFile(path.join(paths.hyperfRoot, 'composer.json'), paths),
+    ...checkBackendAnnotationFile(path.join(paths.hyperfRoot, 'config/autoload/annotations.php'), paths),
   ];
 
   if (violations.length > 0) {
     return fail('template package boundaries', violations.join('; '));
   }
 
-  return pass('template package boundaries', 'template uses published framework packages instead of local path references.');
+  return pass('template package boundaries', 'workspace package references follow the 2.0 development boundary.');
 };
 
 const checkPackageFile = (file, paths) => {
@@ -280,12 +280,6 @@ const checkPackageFile = (file, paths) => {
       if (specifier === 'latest') {
         violations.push(`${relative} ${section}.${name} uses latest`);
       }
-      if (
-        isTrueAdminPackage(name) &&
-        (specifier.startsWith('file:') || specifier.startsWith('link:') || specifier.startsWith('workspace:'))
-      ) {
-        violations.push(`${relative} ${section}.${name} uses local specifier [${specifier}]`);
-      }
     }
   }
 
@@ -309,9 +303,6 @@ const checkComposerFile = (file, paths) => {
       continue;
     }
 
-    if (item.type === 'path' && item.url.includes('trueadmin')) {
-      violations.push(`${relativePath(paths.root, file)} repositories contains local TrueAdmin path [${item.url}]`);
-    }
     if (item.type === 'vcs' && item.url.includes('trueadmin')) {
       violations.push(`${relativePath(paths.root, file)} repositories contains TrueAdmin VCS [${item.url}]`);
     }
@@ -334,8 +325,6 @@ const checkBackendAnnotationFile = (file, paths) => {
 };
 
 const readJsonFile = (file) => JSON.parse(fs.readFileSync(file, 'utf8'));
-
-const isTrueAdminPackage = (name) => name === 'trueadmin' || name.startsWith('@trueadmin/');
 
 const scanAdminRouteMiddlewareBoundaries = (root) => {
   if (!fs.existsSync(root)) {
