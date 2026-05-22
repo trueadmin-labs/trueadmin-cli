@@ -29,6 +29,30 @@ test('prints plugin help without requiring a workspace', () => {
   assert.equal(result.stderr, '');
 });
 
+test('prints runtime help without requiring a workspace', () => {
+  const result = runCli('runtime', '--help');
+
+  assert.equal(result.status, 0);
+  assert.match(result.stdout, /trueadmin runtime check/);
+  assert.equal(result.stderr, '');
+});
+
+test('prints check help without requiring a workspace', () => {
+  const result = runCli('check', '--help');
+
+  assert.equal(result.status, 0);
+  assert.match(result.stdout, /trueadmin check/);
+  assert.equal(result.stderr, '');
+});
+
+test('prints hyperf help without requiring a workspace', () => {
+  const result = runCli('hyperf', '--help');
+
+  assert.equal(result.status, 0);
+  assert.match(result.stdout, /trueadmin hyperf coverage/);
+  assert.equal(result.stderr, '');
+});
+
 test('prints the package version', () => {
   const result = runCli('--version');
 

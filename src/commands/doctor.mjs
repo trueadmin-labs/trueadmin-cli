@@ -34,6 +34,8 @@ export const runDoctorCommand = (paths = workspacePaths()) => {
   if (failed.length > 0) {
     process.exitCode = 1;
   }
+
+  return failed.length === 0;
 };
 
 const pass = (title, detail = '') => ({ status: 'pass', title, detail });

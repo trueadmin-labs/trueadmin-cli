@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { runInitCommand } from '../src/commands/init.mjs';
 
 const execGit = (args, cwd) => {
@@ -81,6 +81,32 @@ test('init keeps git metadata when requested', () => {
 
   assert.equal(fs.existsSync(path.join(cwd, 'demo/package.json')), true);
   assert.equal(fs.existsSync(path.join(cwd, 'demo/.git')), true);
+});
+
+test('init can remove the mobile placeholder for backend and web only projects', () => {
+  const template = pathToFileURL(makeTemplateRepo()).href;
+  const cwd = makeWorkspace();
+  fs.mkdirSync(path.join(fileURLToPath(template), 'mobile'), { recursive: true });
+  fs.writeFileSync(path.join(fileURLToPath(template), 'mobile/README.md'), '# Mobile\n');
+  execGit(['add', '.'], fileURLToPath(template));
+  execGit(
+    [
+      '-c',
+      'user.name=TrueAdmin Test',
+      '-c',
+      'user.email=trueadmin@example.com',
+      '-c',
+      'commit.gpgsign=false',
+      'commit',
+      '-m',
+      'add mobile placeholder',
+    ],
+    fileURLToPath(template),
+  );
+
+  runInitCommand(['demo', '--template', template, '--branch', 'main', '--no-mobile'], cwd);
+
+  assert.equal(fs.existsSync(path.join(cwd, 'demo/mobile')), false);
 });
 
 test('init refuses non-empty target directories', () => {

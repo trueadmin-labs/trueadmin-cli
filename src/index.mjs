@@ -2,20 +2,32 @@
 
 import fs from 'node:fs';
 import process from 'node:process';
+import { checkUsage, runCheckCommand } from './commands/check.mjs';
 import { runDoctorCommand } from './commands/doctor.mjs';
+import { hyperfUsage, runHyperfCommand } from './commands/hyperf.mjs';
 import { initUsage, runInitCommand } from './commands/init.mjs';
 import { pluginUsage, runPluginCommand } from './commands/plugin.mjs';
+import { runtimeUsage, runRuntimeCommand } from './commands/runtime.mjs';
 
 const packageJson = JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
 
 const usage = `Usage:
   trueadmin init <directory>
-  trueadmin plugin <command>
   trueadmin doctor
+  trueadmin check [--full]
+  trueadmin runtime check
+  trueadmin plugin <command>
+  trueadmin hyperf <command>
 
 ${initUsage}
 
-${pluginUsage}`;
+${checkUsage}
+
+${runtimeUsage}
+
+${pluginUsage}
+
+${hyperfUsage}`;
 
 const main = () => {
   const [command, ...args] = process.argv.slice(2);
@@ -31,6 +43,18 @@ const main = () => {
     }
     if (command === 'plugin') {
       runPluginCommand(args);
+      return;
+    }
+    if (command === 'runtime') {
+      runRuntimeCommand(args);
+      return;
+    }
+    if (command === 'check') {
+      runCheckCommand(args);
+      return;
+    }
+    if (command === 'hyperf') {
+      runHyperfCommand(args);
       return;
     }
     if (command === 'init') {

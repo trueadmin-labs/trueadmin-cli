@@ -5,16 +5,17 @@ import process from 'node:process';
 
 const DEFAULT_TEMPLATE_REPO = 'https://github.com/trueadmin-labs/trueadmin.git';
 const SSH_TEMPLATE_REPO = 'git@github.com:trueadmin-labs/trueadmin.git';
-const DEFAULT_BRANCH = 'main';
+const DEFAULT_BRANCH = '2.0';
 
 export const initUsage = `Usage:
-  trueadmin init <directory> [--template <git-url-or-path>] [--branch <name>] [--ssh] [--keep-git]
+  trueadmin init <directory> [--template <git-url-or-path>] [--branch <name>] [--ssh] [--keep-git] [--no-mobile]
 
 Options:
   --template, -t  Git repository or local repository path to clone.
-  --branch, -b    Template branch to clone. Defaults to main.
+  --branch, -b    Template branch to clone. Defaults to 2.0.
   --ssh           Use the TrueAdmin SSH template URL.
-  --keep-git      Keep the template .git directory after cloning.`;
+  --keep-git      Keep the template .git directory after cloning.
+  --no-mobile     Remove the mobile/ placeholder from the initialized project.`;
 
 export const runInitCommand = (args, cwd = process.cwd()) => {
   const options = parseInitArgs(args);
@@ -45,6 +46,9 @@ export const runInitCommand = (args, cwd = process.cwd()) => {
   if (!options.keepGit) {
     fs.rmSync(path.join(targetPath, '.git'), { recursive: true, force: true });
   }
+  if (options.noMobile) {
+    fs.rmSync(path.join(targetPath, 'mobile'), { recursive: true, force: true });
+  }
 
   console.log('');
   console.log('Project created.');
@@ -65,6 +69,7 @@ const parseInitArgs = (args) => {
     template: process.env.TRUEADMIN_TEMPLATE_REPO || DEFAULT_TEMPLATE_REPO,
     branch: process.env.TRUEADMIN_TEMPLATE_BRANCH || DEFAULT_BRANCH,
     keepGit: false,
+    noMobile: false,
     help: false,
     positionals: [],
   };
@@ -92,6 +97,10 @@ const parseInitArgs = (args) => {
     }
     if (arg === '--keep-git') {
       options.keepGit = true;
+      continue;
+    }
+    if (arg === '--no-mobile') {
+      options.noMobile = true;
       continue;
     }
     if (arg.startsWith('-')) {
